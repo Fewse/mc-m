@@ -12,6 +12,7 @@ DEFAULT_CONFIG = {
     "ram_min": "1G",
     "ram_max": "2G",
     "server_dir": ".",
+    "backup_path": "./backups",
     "admin_password_hash": "",  # SHA256 hash
     "secret_key": secrets.token_hex(32)
 }

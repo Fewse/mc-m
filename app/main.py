@@ -26,6 +26,7 @@ class Settings(BaseModel):
     ram_min: str
     ram_max: str
     server_dir: str
+    backup_path: str
 
 class PasswordChange(BaseModel):
     current_password: str
@@ -78,6 +79,7 @@ async def update_settings(settings: Settings, current_user: str = Depends(get_cu
     config.set("ram_min", settings.ram_min)
     config.set("ram_max", settings.ram_max)
     config.set("server_dir", settings.server_dir)
+    config.set("backup_path", settings.backup_path)
     return {"status": "updated"}
 
 @app.post("/api/change-password")
@@ -97,8 +99,11 @@ async def get_file_content(path: str, current_user: str = Depends(get_current_ac
         raise HTTPException(status_code=403, detail="Access denied")
     
     if os.path.exists(target) and os.path.isfile(target):
-        with open(target, 'r') as f:
-            return {"content": f.read()}
+        try:
+            with open(target, 'r') as f:
+                return {"content": f.read()}
+        except Exception:
+             return {"content": "Error reading file."}
     return {"content": ""}
 
 @app.post("/api/file")
@@ -117,9 +122,8 @@ async def list_backups(current_user: str = Depends(get_current_active_user)):
     return backup_manager.list_backups()
 
 @app.post("/api/backups")
-async def create_backup(current_user: str = Depends(get_current_active_user)):
-    # Default world name is 'world', could be parametrized
-    return backup_manager.create_backup("world")
+async def create_backup(type: str = "world", current_user: str = Depends(get_current_active_user)):
+    return backup_manager.create_backup(type, "world")
 
 @app.delete("/api/backups/{filename}")
 async def delete_backup(filename: str, current_user: str = Depends(get_current_active_user)):

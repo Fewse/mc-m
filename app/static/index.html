@@ -177,6 +177,11 @@
                             <input id="set-server-dir" type="text"
                                 class="w-full bg-gray-700 border border-gray-600 rounded p-2 text-white">
                         </div>
+                        <div>
+                            <label class="block text-sm text-gray-400 mb-1">Backup Path</label>
+                            <input id="set-backup-path" type="text"
+                                class="w-full bg-gray-700 border border-gray-600 rounded p-2 text-white">
+                        </div>
                         <button onclick="saveSettings()"
                             class="bg-blue-600 hover:bg-blue-700 px-6 py-2 rounded font-bold w-full">Save
                             Settings</button>
@@ -219,9 +224,14 @@
                 <div id="view-backups" class="hidden space-y-6 max-w-4xl">
                     <div class="flex justify-between items-center">
                         <h2 class="text-2xl font-bold">Backups</h2>
-                        <button onclick="createBackup()"
-                            class="bg-green-600 hover:bg-green-700 px-4 py-2 rounded text-sm font-bold">Create Backup
-                            Now</button>
+                        <div class="space-x-2">
+                            <button onclick="createBackup('world')"
+                                class="bg-green-600 hover:bg-green-700 px-4 py-2 rounded text-sm font-bold">Backup
+                                World</button>
+                            <button onclick="createBackup('full')"
+                                class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded text-sm font-bold">Full
+                                Backup</button>
+                        </div>
                     </div>
                     <div class="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
                         <table class="w-full text-left">
@@ -419,7 +429,6 @@
             ws.onclose = () => setTimeout(connectWS, 3000);
         }
 
-        // Settings
         async function loadSettings() {
             const s = await api('/settings');
             document.getElementById('set-server-name').value = s.server_name;
@@ -428,6 +437,7 @@
             document.getElementById('set-java-path').value = s.java_path;
             document.getElementById('set-jar-path').value = s.jar_path;
             document.getElementById('set-server-dir').value = s.server_dir;
+            document.getElementById('set-backup-path').value = s.backup_path || "./backups";
         }
 
         async function saveSettings() {
@@ -438,6 +448,7 @@
                 java_path: document.getElementById('set-java-path').value,
                 jar_path: document.getElementById('set-jar-path').value,
                 server_dir: document.getElementById('set-server-dir').value,
+                backup_path: document.getElementById('set-backup-path').value,
             };
             await api('/settings', 'POST', s);
             alert('Settings saved!');
@@ -492,9 +503,10 @@
             });
         }
 
-        async function createBackup() {
-            if (!confirm("Create backup? This might lag the server.")) return;
-            const res = await api('/backups', 'POST');
+        async function createBackup(type) {
+            if (!confirm(`Create ${type} backup? This might lag the server.`)) return;
+            // Pass type as query param
+            const res = await api(`/backups?type=${type}`, 'POST');
             if (res.status === 'success') {
                 alert(res.message);
                 loadBackups();
