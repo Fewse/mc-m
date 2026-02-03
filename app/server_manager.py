@@ -281,6 +281,9 @@ class ServerManager:
 
 
     def get_stats(self):
+        # ALWAYS log - not behind debug mode
+        app_logger.info("get_stats() called")
+        
         cpu = 0
         ram = 0
         status = "offline"
@@ -288,20 +291,16 @@ class ServerManager:
         pid = None
         if self.process:
             pid = self.process.pid
-            if config.get("debug_mode"):
-                app_logger.debug(f"get_stats: Using self.process.pid={pid}")
+            app_logger.info(f"get_stats: Using self.process.pid={pid}")
         elif self.external_pid:
             pid = self.external_pid
-            if config.get("debug_mode"):
-                app_logger.debug(f"get_stats: Using external_pid={pid}")
+            app_logger.info(f"get_stats: Using external_pid={pid}")
         else:
-            if config.get("debug_mode"):
-                app_logger.debug("get_stats: No PID available (no process or external_pid)")
+            app_logger.info("get_stats: No PID available (no process or external_pid)")
 
         if pid:
             is_running_result = self.is_running()
-            if config.get("debug_mode"):
-                app_logger.debug(f"get_stats: PID={pid}, is_running()={is_running_result}")
+            app_logger.info(f"get_stats: PID={pid}, is_running()={is_running_result}")
             
             if is_running_result:
                 status = "online"
@@ -323,11 +322,13 @@ class ServerManager:
                     print(f"[ERROR] get_stats failed: {e}")
                     pass
         
-        return {
+        result = {
             "status": status,
             "cpu": cpu,
             "ram": f"{ram:.1f} MB"
         }
+        app_logger.info(f"get_stats() returning: {result}")
+        return result
 
 # For simple reading of stdout without blocking the async loop, 
 # we can use a Thread to update the queue.

@@ -62,7 +62,7 @@ async def get_root():
 
 @app.get("/api/stats")
 async def get_stats(current_user: str = Depends(get_current_active_user)):
-    app_logger.debug(f"Stats requested by user: {current_user}")
+    app_logger.info(f"/api/stats called by user: {current_user}")
     return server_manager.get_stats()
 
 @app.post("/api/start")
