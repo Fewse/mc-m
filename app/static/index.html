@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Minecraft Server Manager</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
         tailwind.config = {
             darkMode: 'class',
@@ -139,6 +140,15 @@
                             </form>
                         </div>
                     </div>
+                    <!-- Charts -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 h-48">
+                        <div class="bg-gray-800 rounded p-4 border border-gray-700 relative">
+                            <canvas id="cpuChart"></canvas>
+                        </div>
+                        <div class="bg-gray-800 rounded p-4 border border-gray-700 relative">
+                            <canvas id="ramChart"></canvas>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Settings View -->
@@ -240,9 +250,13 @@
                     <!-- Progress Bar (Initially Hidden) -->
                     <div id="backup-progress-container"
                         class="hidden bg-gray-800 p-4 rounded border border-gray-700 mb-4">
-                        <div class="flex justify-between text-sm text-gray-400 mb-1">
-                            <span id="backup-status-text">Starting...</span>
-                            <span id="backup-percent">0%</span>
+                        <div class="flex justify-between items-center mb-2">
+                            <div class="text-sm text-gray-400">
+                                <span id="backup-status-text">Starting...</span>
+                                (<span id="backup-percent">0%</span>)
+                            </div>
+                            <button onclick="cancelBackup()"
+                                class="text-xs text-red-400 hover:text-red-300 border border-red-500 rounded px-2 py-1">Cancel</button>
                         </div>
                         <div class="w-full bg-gray-700 rounded-full h-2.5">
                             <div id="backup-bar" class="bg-blue-600 h-2.5 rounded-full" style="width: 0%"></div>
@@ -393,20 +407,105 @@
         }
 
         // --- Logic ---
-        function startStatsLoop() {
-            setInterval(async () => {
-                const stats = await api('/stats');
-                document.getElementById('cpu-stat').innerText = stats.cpu + '%';
-                document.getElementById('ram-stat').innerText = stats.ram;
+        // Charts
+        let cpuChart, ramChart;
 
-                const badge = document.getElementById('server-status');
-                if (stats.status === 'online') {
-                    badge.innerText = 'ONLINE';
-                    badge.className = 'px-3 py-1 rounded-full text-xs font-bold bg-green-500 text-white';
-                } else {
-                    badge.innerText = 'OFFLINE';
-                    badge.className = 'px-3 py-1 rounded-full text-xs font-bold bg-red-600 text-white';
+        function initCharts() {
+            Chart.defaults.color = '#9ca3af';
+            Chart.defaults.borderColor = '#374151';
+
+            cpuChart = new Chart(document.getElementById('cpuChart'), {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'CPU Usage (%)',
+                        data: [],
+                        borderColor: '#10b981',
+                        backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                        fill: true,
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: { beginAtZero: true, max: 100 },
+                        x: { display: false } // Hide x labels for cleaner look
+                    },
+                    plugins: { legend: { display: false }, title: { display: true, text: 'CPU Usage' } }
                 }
+            });
+
+            ramChart = new Chart(document.getElementById('ramChart'), {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'RAM Usage (MB)',
+                        data: [],
+                        borderColor: '#3b82f6',
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        fill: true,
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: { beginAtZero: true },
+                        x: { display: false }
+                    },
+                    plugins: { legend: { display: false }, title: { display: true, text: 'RAM Usage' } }
+                }
+            });
+        }
+
+        function updateCharts(cpu, ram) {
+            const now = new Date().toLocaleTimeString();
+
+            // CPU
+            cpuChart.data.labels.push(now);
+            cpuChart.data.datasets[0].data.push(cpu);
+            if (cpuChart.data.labels.length > 20) {
+                cpuChart.data.labels.shift();
+                cpuChart.data.datasets[0].data.shift();
+            }
+            cpuChart.update();
+
+            // RAM
+            // Parse "123.4 MB" -> 123.4
+            const ramVal = parseFloat(ram);
+            ramChart.data.labels.push(now);
+            ramChart.data.datasets[0].data.push(ramVal);
+            if (ramChart.data.labels.length > 20) {
+                ramChart.data.labels.shift();
+                ramChart.data.datasets[0].data.shift();
+            }
+            ramChart.update();
+        }
+
+        function startStatsLoop() {
+            initCharts();
+            setInterval(async () => {
+                try {
+                    const stats = await api('/stats');
+                    document.getElementById('cpu-stat').innerText = stats.cpu + '%';
+                    document.getElementById('ram-stat').innerText = stats.ram;
+
+                    updateCharts(stats.cpu, stats.ram);
+
+                    const badge = document.getElementById('server-status');
+                    if (stats.status === 'online') {
+                        badge.innerText = 'ONLINE';
+                        badge.className = 'px-3 py-1 rounded-full text-xs font-bold bg-green-500 text-white';
+                    } else {
+                        badge.innerText = 'OFFLINE';
+                        badge.className = 'px-3 py-1 rounded-full text-xs font-bold bg-red-600 text-white';
+                    }
+                } catch (e) { console.error(e); }
             }, 2000);
         }
 
@@ -576,6 +675,12 @@
                     }, 3000);
                 }
             }, 1000);
+        }
+
+        async function cancelBackup() {
+            if (!confirm("Cancel running backup? The archive will be deleted.")) return;
+            const res = await api('/backups/cancel', 'POST');
+            if (res.status === 'error') alert(res.message);
         }
 
         async function deleteBackup(name) {
