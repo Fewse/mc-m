@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Minecraft Server Manager</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        gray: {
+                            900: '#1a202c',
+                            800: '#2d3748',
+                            700: '#4a5568',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .custom-scroll::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .custom-scroll::-webkit-scrollbar-track {
+            background: #2d3748;
+        }
+
+        .custom-scroll::-webkit-scrollbar-thumb {
+            background: #4a5568;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+
+<body class="bg-gray-900 text-white font-sans antialiased h-screen flex flex-col">
+
+    <!-- Login Modal -->
+    <div id="login-modal" class="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50">
+        <div class="bg-gray-800 p-8 rounded-lg shadow-xl w-96 border border-gray-700">
+            <h2 class="text-2xl font-bold mb-6 text-center text-green-500">MC Manager Login</h2>
+            <form onsubmit="handleLogin(event)">
+                <input type="text" id="username" placeholder="Username (any)"
+                    class="w-full bg-gray-700 text-white border border-gray-600 rounded p-3 mb-4 focus:outline-none focus:border-green-500"
+                    value="admin">
+                <input type="password" id="password" placeholder="Password"
+                    class="w-full bg-gray-700 text-white border border-gray-600 rounded p-3 mb-6 focus:outline-none focus:border-green-500">
+                <button type="submit"
+                    class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded transition duration-200">Login</button>
+            </form>
+            <p id="login-error" class="text-red-500 mt-4 text-center hidden"></p>
+        </div>
+    </div>
+
+    <!-- App Content -->
+    <div id="app-content" class="hidden flex-1 flex flex-col">
+        <!-- Header -->
+        <header class="bg-gray-800 shadow-md p-4 flex justify-between items-center border-b border-gray-700">
+            <h1 class="text-xl font-bold text-green-500">MC Manager</h1>
+            <div class="flex items-center space-x-4">
+                <span id="server-status"
+                    class="px-3 py-1 rounded-full text-xs font-bold bg-gray-600 text-gray-300">OFFLINE</span>
+                <span class="text-gray-400 text-sm">CPU: <span id="cpu-stat">0%</span></span>
+                <span class="text-gray-400 text-sm">RAM: <span id="ram-stat">0 MB</span></span>
+                <button onclick="logout()" class="text-sm text-red-400 hover:text-red-300">Logout</button>
+            </div>
+        </header>
+
+        <!-- Main Body -->
+        <div class="flex-1 flex overflow-hidden">
+            <!-- Sidebar -->
+            <nav class="w-64 bg-gray-800 border-r border-gray-700 flex flex-col p-4 space-y-2">
+                <button onclick="showUnimplemented('dashboard')"
+                    class="bg-gray-700 hover:bg-gray-600 text-left px-4 py-2 rounded text-white active-nav"
+                    data-tab="dashboard">Dashboard & Console</button>
+                <button onclick="showUnimplemented('settings')"
+                    class="hover:bg-gray-700 text-left px-4 py-2 rounded text-gray-300"
+                    data-tab="settings">Settings</button>
+                <button onclick="showUnimplemented('files')"
+                    class="hover:bg-gray-700 text-left px-4 py-2 rounded text-gray-300" data-tab="files">File
+                    Editor</button>
+            </nav>
+
+            <!-- Content Area -->
+            <main class="flex-1 bg-gray-900 p-6 overflow-y-auto custom-scroll">
+
+                <!-- Dashboard View -->
+                <div id="view-dashboard" class="space-y-6">
+                    <!-- Controls -->
+                    <div class="flex space-x-4">
+                        <button onclick="startServer()"
+                            class="bg-green-600 hover:bg-green-700 px-6 py-2 rounded font-bold shadow-lg transition">Start</button>
+                        <button onclick="stopServer()"
+                            class="bg-yellow-600 hover:bg-yellow-700 px-6 py-2 rounded font-bold shadow-lg transition">Stop</button>
+                        <button onclick="sendCommand('kill')"
+                            class="bg-red-600 hover:bg-red-700 px-6 py-2 rounded font-bold shadow-lg transition">Kill</button>
+                    </div>
+
+                    <!-- Console -->
+                    <div class="bg-black rounded-lg border border-gray-700 shadow-2xl flex flex-col h-[600px]">
+                        <div class="bg-gray-800 px-4 py-2 text-xs text-gray-400 border-b border-gray-700 font-mono">
+                            Server Console</div>
+                        <div id="console-output"
+                            class="flex-1 p-4 font-mono text-sm overflow-y-auto custom-scroll text-gray-300 whitespace-pre-wrap">
+                        </div>
+                        <div class="p-2 bg-gray-800 border-t border-gray-700">
+                            <form onsubmit="handleConsoleCommand(event)" class="flex">
+                                <input type="text" id="console-input"
+                                    class="flex-1 bg-gray-900 border border-gray-600 rounded-l px-3 py-2 text-white focus:outline-none focus:border-green-500 font-mono"
+                                    placeholder="Type a command...">
+                                <button type="submit"
+                                    class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-r font-bold">Send</button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Settings View -->
+                <div id="view-settings" class="hidden space-y-6 max-w-2xl">
+                    <h2 class="text-2xl font-bold mb-4">Server Configuration</h2>
+                    <div class="bg-gray-800 p-6 rounded-lg border border-gray-700 space-y-4">
+                        <div>
+                            <label class="block text-sm text-gray-400 mb-1">Server Name</label>
+                            <input id="set-server-name" type="text"
+                                class="w-full bg-gray-700 border border-gray-600 rounded p-2 text-white">
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm text-gray-400 mb-1">RAM Min (-Xms)</label>
+                                <input id="set-ram-min" type="text"
+                                    class="w-full bg-gray-700 border border-gray-600 rounded p-2 text-white">
+                            </div>
+                            <div>
+                                <label class="block text-sm text-gray-400 mb-1">RAM Max (-Xmx)</label>
+                                <input id="set-ram-max" type="text"
+                                    class="w-full bg-gray-700 border border-gray-600 rounded p-2 text-white">
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-sm text-gray-400 mb-1">Java Path</label>
+                            <input id="set-java-path" type="text"
+                                class="w-full bg-gray-700 border border-gray-600 rounded p-2 text-white">
+                        </div>
+                        <div>
+                            <label class="block text-sm text-gray-400 mb-1">Jar File Path</label>
+                            <input id="set-jar-path" type="text"
+                                class="w-full bg-gray-700 border border-gray-600 rounded p-2 text-white">
+                        </div>
+                        <div>
+                            <label class="block text-sm text-gray-400 mb-1">Server Working Directory</label>
+                            <input id="set-server-dir" type="text"
+                                class="w-full bg-gray-700 border border-gray-600 rounded p-2 text-white">
+                        </div>
+                        <button onclick="saveSettings()"
+                            class="bg-blue-600 hover:bg-blue-700 px-6 py-2 rounded font-bold w-full">Save
+                            Settings</button>
+                    </div>
+
+                    <div class="bg-gray-800 p-6 rounded-lg border border-gray-700 space-y-4">
+                        <h3 class="text-xl font-bold">Security</h3>
+                        <div>
+                            <label class="block text-sm text-gray-400 mb-1">Current Password</label>
+                            <input id="sec-current-pass" type="password"
+                                class="w-full bg-gray-700 border border-gray-600 rounded p-2 text-white">
+                        </div>
+                        <div>
+                            <label class="block text-sm text-gray-400 mb-1">New Password</label>
+                            <input id="sec-new-pass" type="password"
+                                class="w-full bg-gray-700 border border-gray-600 rounded p-2 text-white">
+                        </div>
+                        <button onclick="changePassword()"
+                            class="bg-red-600 hover:bg-red-700 px-6 py-2 rounded font-bold w-full">Change
+                            Password</button>
+                    </div>
+                </div>
+
+                <!-- Files View -->
+                <div id="view-files" class="hidden space-y-6 max-w-4xl h-full flex flex-col">
+                    <div class="flex justify-between items-center">
+                        <h2 class="text-2xl font-bold">File Editor (server.properties)</h2>
+                        <button onclick="saveFile()" class="bg-blue-600 px-4 py-2 rounded text-sm">Save Changes</button>
+                    </div>
+                    <div class="flex-1 flex flex-col">
+                        <input id="file-path" type="text" value="server.properties"
+                            class="bg-gray-800 border border-gray-700 p-2 mb-2 text-gray-300 w-full"
+                            placeholder="Filename relative to server dir">
+                        <textarea id="file-content"
+                            class="flex-1 bg-gray-900 border border-gray-700 font-mono text-sm p-4 rounded text-gray-300 focus:outline-none custom-scroll"></textarea>
+                    </div>
+                </div>
+
+                <!-- Backups View -->
+                <div id="view-backups" class="hidden space-y-6 max-w-4xl">
+                    <div class="flex justify-between items-center">
+                        <h2 class="text-2xl font-bold">Backups</h2>
+                        <button onclick="createBackup()"
+                            class="bg-green-600 hover:bg-green-700 px-4 py-2 rounded text-sm font-bold">Create Backup
+                            Now</button>
+                    </div>
+                    <div class="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
+                        <table class="w-full text-left">
+                            <thead class="bg-gray-700 text-gray-300">
+                                <tr>
+                                    <th class="p-3">Name</th>
+                                    <th class="p-3">Size</th>
+                                    <th class="p-3">Date</th>
+                                    <th class="p-3">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="backup-list" class="divide-y divide-gray-700 text-sm">
+                                <!-- JS Populated -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Logs View -->
+                <div id="view-logs" class="hidden space-y-6 max-w-4xl h-full flex flex-col">
+                    <div class="flex justify-between items-center">
+                        <h2 class="text-2xl font-bold">Log History (logs/latest.log)</h2>
+                        <button onclick="loadLogs()" class="bg-blue-600 px-4 py-2 rounded text-sm">Refresh</button>
+                    </div>
+                    <div
+                        class="flex-1 flex flex-col bg-black rounded-lg border border-gray-700 shadow-2xl overflow-hidden h-96">
+                        <pre id="log-content"
+                            class="flex-1 p-4 font-mono text-xs text-gray-300 custom-scroll overflow-y-auto whitespace-pre-wrap"></pre>
+                    </div>
+                </div>
+
+            </main>
+        </div>
+    </div>
+
+    <script>
+        let token = localStorage.getItem('access_token');
+        let ws = null;
+
+        // --- Init ---
+        if (token) {
+            showApp();
+        }
+
+        // --- Auth ---
+        async function handleLogin(e) {
+            e.preventDefault();
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const errorMsg = document.getElementById('login-error');
+
+            const formData = new FormData();
+            formData.append('username', username);
+            formData.append('password', password);
+
+            try {
+                const res = await fetch('/token', { method: 'POST', body: formData });
+                if (res.status === 429) throw new Error('Too many attempts. Wait 5 minutes.');
+                if (!res.ok) throw new Error('Invalid credentials');
+                const data = await res.json();
+                token = data.access_token;
+                localStorage.setItem('access_token', token);
+                showApp();
+            } catch (err) {
+                errorMsg.innerText = err.message;
+                errorMsg.classList.remove('hidden');
+            }
+        }
+
+        function logout() {
+            localStorage.removeItem('access_token');
+            location.reload();
+        }
+
+        function showApp() {
+            document.getElementById('login-modal').classList.add('hidden');
+            document.getElementById('app-content').classList.remove('hidden');
+            startStatsLoop();
+            connectWS();
+            loadSettings(); // Preload
+        }
+
+        // --- Navigation ---
+        function showUnimplemented(tab) {
+            // Hide all views
+            ['dashboard', 'settings', 'files', 'backups', 'logs'].forEach(v => {
+                const el = document.getElementById('view-' + v);
+                if (el) el.classList.add('hidden');
+            });
+            // Show selected
+            const target = document.getElementById('view-' + tab);
+            if (target) target.classList.remove('hidden');
+
+            // Update Tab styles
+            document.querySelectorAll('nav button').forEach(b => {
+                if (b.dataset.tab === tab) {
+                    b.classList.add('bg-gray-700', 'text-white');
+                    b.classList.remove('text-gray-300');
+                } else {
+                    b.classList.remove('bg-gray-700', 'text-white');
+                    b.classList.add('text-gray-300');
+                }
+            });
+
+            if (tab === 'files') loadFile();
+            if (tab === 'backups') loadBackups();
+            if (tab === 'logs') loadLogs();
+        }
+
+        // --- API Helpers ---
+        async function api(url, method = 'GET', body = null) {
+            const opts = {
+                method,
+                headers: { 'Authorization': 'Bearer ' + token }
+            };
+            if (body) {
+                opts.headers['Content-Type'] = 'application/json';
+                opts.body = JSON.stringify(body);
+            }
+            const res = await fetch('/api' + url, opts);
+            if (res.status === 401) logout();
+            return res.json();
+        }
+
+        // --- Logic ---
+        function startStatsLoop() {
+            setInterval(async () => {
+                const stats = await api('/stats');
+                document.getElementById('cpu-stat').innerText = stats.cpu + '%';
+                document.getElementById('ram-stat').innerText = stats.ram;
+
+                const badge = document.getElementById('server-status');
+                if (stats.status === 'online') {
+                    badge.innerText = 'ONLINE';
+                    badge.className = 'px-3 py-1 rounded-full text-xs font-bold bg-green-500 text-white';
+                } else {
+                    badge.innerText = 'OFFLINE';
+                    badge.className = 'px-3 py-1 rounded-full text-xs font-bold bg-red-600 text-white';
+                }
+            }, 2000);
+        }
+
+        async function startServer() { await api('/start', 'POST'); }
+        async function stopServer() { await api('/stop', 'POST'); }
+        async function sendCommand(cmd) {
+            // Reuse for custom commands
+            await api('/command', 'POST', { command: cmd });
+        }
+
+        async function handleConsoleCommand(e) {
+            e.preventDefault();
+            const input = document.getElementById('console-input');
+            const cmd = input.value;
+            if (cmd) {
+                await sendCommand(cmd);
+                input.value = '';
+            }
+        }
+
+        function connectWS() {
+            // WS connection
+            const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+            ws = new WebSocket(protocol + '://' + window.location.host + '/ws/console');
+            ws.onmessage = function (event) {
+                const consoleDiv = document.getElementById('console-output');
+                consoleDiv.innerText += event.data;
+                consoleDiv.scrollTop = consoleDiv.scrollHeight;
+            };
+            ws.onclose = () => setTimeout(connectWS, 3000);
+        }
+
+        // Settings
+        async function loadSettings() {
+            const s = await api('/settings');
+            document.getElementById('set-server-name').value = s.server_name;
+            document.getElementById('set-ram-min').value = s.ram_min;
+            document.getElementById('set-ram-max').value = s.ram_max;
+            document.getElementById('set-java-path').value = s.java_path;
+            document.getElementById('set-jar-path').value = s.jar_path;
+            document.getElementById('set-server-dir').value = s.server_dir;
+        }
+
+        async function saveSettings() {
+            const s = {
+                server_name: document.getElementById('set-server-name').value,
+                ram_min: document.getElementById('set-ram-min').value,
+                ram_max: document.getElementById('set-ram-max').value,
+                java_path: document.getElementById('set-java-path').value,
+                jar_path: document.getElementById('set-jar-path').value,
+                server_dir: document.getElementById('set-server-dir').value,
+            };
+            await api('/settings', 'POST', s);
+            alert('Settings saved!');
+        }
+
+        async function changePassword() {
+            const current = document.getElementById('sec-current-pass').value;
+            const newp = document.getElementById('sec-new-pass').value;
+            const res = await api('/change-password', 'POST', { current_password: current, new_password: newp });
+            if (res.status === 'success') {
+                alert('Password changed!');
+                document.getElementById('sec-current-pass').value = '';
+                document.getElementById('sec-new-pass').value = '';
+            } else {
+                alert('Error: ' + (res.detail || 'Unknown error'));
+            }
+        }
+
+        // Files
+        async function loadFile() {
+            const path = document.getElementById('file-path').value;
+            const res = await api('/file?path=' + encodeURIComponent(path));
+            document.getElementById('file-content').value = res.content || '';
+        }
+
+        // Bind loadFile to input enter or blur
+        document.getElementById('file-path').addEventListener('blur', loadFile);
+
+        async function saveFile() {
+            const path = document.getElementById('file-path').value;
+            const content = document.getElementById('file-content').value;
+            await api('/file?path=' + encodeURIComponent(path), 'POST', { command: content });
+            alert('File saved!');
+        }
+
+        // Backups
+        async function loadBackups() {
+            const list = await api('/backups');
+            const tbody = document.getElementById('backup-list');
+            tbody.innerHTML = '';
+            list.forEach(b => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td class="p-3">${b.name}</td>
+                    <td class="p-3">${(b.size / 1024 / 1024).toFixed(2)} MB</td>
+                    <td class="p-3">${new Date(b.created).toLocaleString()}</td>
+                    <td class="p-3">
+                        <button onclick="deleteBackup('${b.name}')" class="text-red-400 hover:text-red-300">Delete</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        async function createBackup() {
+            if (!confirm("Create backup? This might lag the server.")) return;
+            const res = await api('/backups', 'POST');
+            if (res.status === 'success') {
+                alert(res.message);
+                loadBackups();
+            } else {
+                alert(res.message);
+            }
+        }
+
+        async function deleteBackup(name) {
+            if (!confirm("Delete " + name + "?")) return;
+            await api('/backups/' + name, 'DELETE');
+            loadBackups();
+        }
+
+        // Logs
+        async function loadLogs() {
+            const res = await api('/logs?lines=500');
+            document.getElementById('log-content').innerText = res.content;
+        }
+
+    </script>
+</body>
+
+</html>
