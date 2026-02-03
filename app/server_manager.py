@@ -6,6 +6,7 @@ import queue
 from collections import deque
 from typing import Optional, List
 from app.config import config
+from app.logger import app_logger
 
 class ServerManager:
     def __init__(self):
@@ -51,10 +52,10 @@ class ServerManager:
 
     def start_server(self):
         if config.get("debug_mode"):
-             print(f"[TRACE] start_server called. Current State: {self.is_running()}")
+             app_logger.log(f"[TRACE] start_server called. Current State: {self.is_running()}")
 
         if self.is_running():
-            print(f"[TRACE] Server already running.")
+            app_logger.log(f"[TRACE] Server already running.")
             return {"status": "error", "message": "Server is already running"}
 
         # Expand paths (handle ~)
@@ -62,13 +63,13 @@ class ServerManager:
         server_dir = os.path.expanduser(config.get("server_dir"))
         java_path = os.path.expanduser(config.get("java_path", "java"))
 
-        print(f"[DEBUG] Starting server...")
-        print(f"[DEBUG] Jar: {jar_path}")
-        print(f"[DEBUG] Dir: {server_dir}")
-        print(f"[DEBUG] Java: {java_path}")
+        app_logger.log(f"[DEBUG] Starting server...")
+        app_logger.log(f"[DEBUG] Jar: {jar_path}")
+        app_logger.log(f"[DEBUG] Dir: {server_dir}")
+        app_logger.log(f"[DEBUG] Java: {java_path}")
 
         if not os.path.exists(jar_path):
-             print(f"[ERROR] Jar not found at {jar_path}")
+             app_logger.log(f"[ERROR] Jar not found at {jar_path}")
              return {"status": "error", "message": f"Jar file not found at {jar_path}"}
         
         if not os.path.exists(server_dir):
@@ -83,7 +84,7 @@ class ServerManager:
             "nogui"
         ]
         
-        print(f"[DEBUG] Command: {' '.join(cmd)}")
+        app_logger.log(f"[DEBUG] Command: {' '.join(cmd)}")
 
         try:
             self.process = subprocess.Popen(
@@ -102,13 +103,13 @@ class ServerManager:
                 with open(self.pid_file, 'w') as f:
                     f.write(str(self.process.pid))
             except Exception as e:
-                print(f"[WARN] Failed to write PID file: {e}")
+                app_logger.log(f"[WARN] Failed to write PID file: {e}")
 
             # Start background thread/task to read stdout
-            print(f"[DEBUG] Process started with PID {self.process.pid}")
+            app_logger.log(f"[DEBUG] Process started with PID {self.process.pid}")
             return {"status": "success", "message": "Server started"}
         except Exception as e:
-            print(f"[ERROR] Failed to start process: {e}")
+            app_logger.log(f"[ERROR] Failed to start process: {e}")
             return {"status": "error", "message": str(e)}
 
     async def stop_server(self):
@@ -251,7 +252,7 @@ import threading
 import time
 
 def reader_thread(server_manager):
-    if config.get("debug_mode"): print(f"[TRACE] reader_thread: Started.")
+    app_logger.log(f"[TRACE] reader_thread: Started.")
     while True:
         try:
             if server_manager.process and server_manager.process.stdout:
@@ -259,8 +260,10 @@ def reader_thread(server_manager):
                 if line:
                     server_manager.log_history.append(line)
                     server_manager.publish_queue.put(line)
+                    # Debug: log that we read something? Too noisy?
+                    # app_logger.log(f"[TRACE] Read: {line.strip()}")
                 else:
-                    if config.get("debug_mode"): print(f"[TRACE] reader_thread: Empty line (EOF?).")
+                    if config.get("debug_mode"): app_logger.log(f"[TRACE] reader_thread: Empty line (EOF?).")
                     # Process ended or stream closed
                     if not server_manager.is_running():
                          time.sleep(1)
@@ -268,7 +271,7 @@ def reader_thread(server_manager):
                 # No process running
                 time.sleep(1)
         except Exception as e:
-             if config.get("debug_mode"): print(f"[ERROR] reader_thread exception: {e}")
+             if config.get("debug_mode"): app_logger.log(f"[ERROR] reader_thread exception: {e}")
              # Prevent thread crash on IO errors
              time.sleep(1)
 

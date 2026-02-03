@@ -22,6 +22,9 @@ class AppLogger:
     def flush(self):
         self.terminal.flush()
 
+    def log(self, message):
+        self.write(message + "\n")
+
     def broadcast(self, message):
         # Using list copy to be safe
         for q in list(self.listeners):

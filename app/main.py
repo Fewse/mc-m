@@ -11,6 +11,8 @@ import asyncio
 import os
 from app.logger import app_logger
 
+app_logger.log("[SYSTEM] Application starting...")
+
 app = FastAPI()
 
 # Mount static files
