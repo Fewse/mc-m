@@ -3,13 +3,15 @@ import subprocess
 import os
 import psutil
 import queue
+from collections import deque
 from typing import Optional, List
 from app.config import config
 
 class ServerManager:
     def __init__(self):
         self.process: Optional[subprocess.Popen] = None
-        self.console_queue = queue.Queue(maxsize=100) # Store last 100 lines
+        self.log_history = deque(maxlen=200) # Store last 200 lines for history
+        self.publish_queue = queue.Queue() # Unbounded queue for inter-thread communication
         self.listeners = [] # WebSocket listeners
 
     def start_server(self):
@@ -89,7 +91,6 @@ class ServerManager:
                 pass
 
 
-
     def get_stats(self):
         cpu = 0
         ram = 0
@@ -122,7 +123,8 @@ def reader_thread(server_manager):
             if server_manager.process and server_manager.process.stdout:
                 line = server_manager.process.stdout.readline()
                 if line:
-                    server_manager.console_queue.put(line)
+                    server_manager.log_history.append(line)
+                    server_manager.publish_queue.put(line)
                 else:
                     # Process ended or stream closed
                     if not server_manager.is_running():

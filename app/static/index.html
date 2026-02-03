@@ -536,7 +536,7 @@
         function connectWS() {
             // WS connection
             const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-            ws = new WebSocket(protocol + '://' + window.location.host + '/ws/console');
+            ws = new WebSocket(protocol + '://' + window.location.host + '/ws/console?token=' + encodeURIComponent(token));
             ws.onmessage = function (event) {
                 const consoleDiv = document.getElementById('console-output');
                 consoleDiv.innerText += event.data;

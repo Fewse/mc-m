@@ -160,6 +160,29 @@ async def get_logs(lines: int = 200, current_user: str = Depends(get_current_act
         return {"content": f"Error reading log: {str(e)}"}
 
 
+@app.on_event("startup")
+async def startup_event():
+    asyncio.create_task(broadcast_logs())
+
+async def broadcast_logs():
+    """Background task to broadcast logs to all connected clients."""
+    while True:
+        try:
+            # Blocking get from queue, run in thread
+            line = await asyncio.to_thread(server_manager.publish_queue.get)
+            
+            # Broadcast to all client queues
+            # We iterate a copy to handle dynamic addition/removal safely, 
+            # though usually list operations are atomic enough for this in GIL.
+            for q in list(server_manager.listeners):
+                try:
+                    q.put_nowait(line)
+                except asyncio.QueueFull:
+                    pass # Slow client, drop message?
+        except Exception as e:
+            print(f"Broadcast error: {e}")
+            await asyncio.sleep(1)
+
 # WebSocket for Console
 @app.websocket("/ws/console")
 async def websocket_endpoint(websocket: WebSocket, token: str = Query(None)):
@@ -168,12 +191,23 @@ async def websocket_endpoint(websocket: WebSocket, token: str = Query(None)):
         return
 
     await websocket.accept()
+    
+    # Create a personal queue for this client
+    client_queue = asyncio.Queue(maxsize=500)
+    server_manager.listeners.append(client_queue)
+    
     try:
+        # Send history first
+        for line in list(server_manager.log_history):
+             await websocket.send_text(line)
+
         while True:
-            # Poll queue
-            while not server_manager.console_queue.empty():
-                line = server_manager.console_queue.get()
-                await websocket.send_text(line)
-            await asyncio.sleep(0.5)
+            line = await client_queue.get()
+            await websocket.send_text(line)
+            
     except WebSocketDisconnect:
-        pass
+        if client_queue in server_manager.listeners:
+            server_manager.listeners.remove(client_queue)
+    except Exception:
+        if client_queue in server_manager.listeners:
+            server_manager.listeners.remove(client_queue)
