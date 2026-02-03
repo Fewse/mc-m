@@ -60,7 +60,7 @@ async def start_server(current_user: str = Depends(get_current_active_user)):
 
 @app.post("/api/stop")
 async def stop_server(current_user: str = Depends(get_current_active_user)):
-    return server_manager.stop_server()
+    return await server_manager.stop_server()
 
 @app.post("/api/command")
 async def send_command(cmd: Command, current_user: str = Depends(get_current_active_user)):
@@ -94,8 +94,10 @@ async def change_password(data: PasswordChange, current_user: str = Depends(get_
 # File Editor
 @app.get("/api/file")
 async def get_file_content(path: str, current_user: str = Depends(get_current_active_user)):
-    target = os.path.join(config.get("server_dir"), path)
-    if not os.path.abspath(target).startswith(os.path.abspath(config.get("server_dir"))):
+    target = os.path.realpath(os.path.join(config.get("server_dir"), path))
+    server_root = os.path.realpath(config.get("server_dir"))
+    
+    if not target.startswith(server_root):
         raise HTTPException(status_code=403, detail="Access denied")
     
     if os.path.exists(target) and os.path.isfile(target):
@@ -108,8 +110,10 @@ async def get_file_content(path: str, current_user: str = Depends(get_current_ac
 
 @app.post("/api/file")
 async def save_file_content(path: str, content: Command, current_user: str = Depends(get_current_active_user)): 
-    target = os.path.join(config.get("server_dir"), path)
-    if not os.path.abspath(target).startswith(os.path.abspath(config.get("server_dir"))):
+    target = os.path.realpath(os.path.join(config.get("server_dir"), path))
+    server_root = os.path.realpath(config.get("server_dir"))
+    
+    if not target.startswith(server_root):
         raise HTTPException(status_code=403, detail="Access denied")
     
     with open(target, 'w') as f:

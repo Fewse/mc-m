@@ -63,12 +63,19 @@ class ServerManager:
             print(f"[ERROR] Failed to start process: {e}")
             return {"status": "error", "message": str(e)}
 
-    def stop_server(self):
+    async def stop_server(self):
         if not self.is_running():
             return {"status": "error", "message": "Server is not running"}
         
         self.send_command("stop")
-        return {"status": "success", "message": "Stop command sent"}
+        
+        # Wait for graceful shutdown
+        for _ in range(20): # Wait up to 10 seconds
+            if not self.is_running():
+                return {"status": "success", "message": "Server stopped gracefully"}
+            await asyncio.sleep(0.5)
+            
+        return {"status": "warning", "message": "Stop command sent, but server is still running. Use Kill if needed."}
 
     def force_kill(self):
         if self.process:

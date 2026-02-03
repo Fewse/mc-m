@@ -26,6 +26,17 @@ def check_rate_limit(request: Request):
              # Reset if lockout expired
              failed_attempts[client_ip] = []
 
+MAX_TRACKED_IPS = 1000
+
+def cleanup_old_ips():
+    """Prevent memory leaks by removing old entries"""
+    if len(failed_attempts) > MAX_TRACKED_IPS:
+        # Simple policy: Clear half of the cache if full
+        # In prod, LRU cache is better, but this suffices to prevent OOM
+        for _ in range(MAX_TRACKED_IPS // 2):
+            failed_attempts.popitem()
+
 def record_failed_attempt(request: Request):
     client_ip = request.client.host
+    cleanup_old_ips()
     failed_attempts[client_ip].append(time())

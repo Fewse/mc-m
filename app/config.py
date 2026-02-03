@@ -35,8 +35,18 @@ class ConfigManager:
 
     def save_config(self, new_config: Dict[str, Any]):
         self.config.update(new_config)
-        with open(CONFIG_FILE, 'w') as f:
-            json.dump(self.config, f, indent=4)
+        
+        # Atomic write
+        import tempfile
+        tmp_fd, tmp_path = tempfile.mkstemp(dir=os.path.dirname(os.path.abspath(CONFIG_FILE)), text=True)
+        try:
+            with os.fdopen(tmp_fd, 'w') as f:
+                json.dump(self.config, f, indent=4)
+            os.replace(tmp_path, CONFIG_FILE)
+        except Exception as e:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+            print(f"[ERROR] Failed to save config: {e}")
 
     def get(self, key: str, default=None):
         return self.config.get(key, default)
