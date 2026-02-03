@@ -5,6 +5,7 @@ import glob
 import datetime
 import asyncio
 from app.config import config
+from app.logger import app_logger
 
 class BackupManager:
     def __init__(self):
@@ -22,12 +23,15 @@ class BackupManager:
     def cancel_backup(self):
         if self.current_status["state"] == "running":
             self.cancel_requested = True
+            app_logger.warning("Backup cancellation requested")
             return {"status": "success", "message": "Cancellation requested"}
+        app_logger.warning("Cancel backup failed: No backup running")
         return {"status": "error", "message": "No backup running"}
 
     def list_backups(self):
         backup_dir = os.path.expanduser(config.get("backup_path"))
         if not os.path.exists(backup_dir):
+            app_logger.debug("Backup directory does not exist")
             return []
         
         # List zip files
@@ -43,6 +47,7 @@ class BackupManager:
                 })
             except FileNotFoundError:
                 pass
+        app_logger.debug(f"Listed {len(backups)} backups")
         return sorted(backups, key=lambda x: x["created"], reverse=True)
 
     def _get_unique_path(self, directory, filename):
@@ -57,8 +62,15 @@ class BackupManager:
 
     async def create_backup(self, backup_type="world", world_name="world"):
         if self.current_status["state"] == "running":
+            app_logger.warning("Backup creation failed: Backup already running")
             return {"status": "error", "message": "Backup already running"}
 
+        app_logger.info("=" * 60)
+        app_logger.info(f"BACKUP CREATION STARTED: {backup_type}")
+        if backup_type == "world":
+            app_logger.info(f"World name: {world_name}")
+        app_logger.info("=" * 60)
+        
         if config.get("debug_mode"):
              print(f"[TRACE] BackupManager.create_backup: type={backup_type} world={world_name}")
 
@@ -95,7 +107,12 @@ class BackupManager:
                 source_root = os.path.join(server_dir, world_name)
                 base_name = f"world_backup_{world_name}_{timestamp}.zip"
                 if not os.path.exists(source_root):
+                    app_logger.error(f"World folder '{world_name}' not found")
                     raise FileNotFoundError(f"World folder '{world_name}' not found.")
+
+            app_logger.info(f"Backup source: {source_root}")
+            app_logger.info(f"Backup destination: {backup_dir}")
+            app_logger.info(f"Backup filename: {base_name}")
 
             target_zip = self._get_unique_path(backup_dir, base_name)
             
@@ -119,11 +136,15 @@ class BackupManager:
                     total_files += 1
 
             if total_files == 0:
+                app_logger.error("No files found to backup")
                 raise Exception("No files found")
+
+            app_logger.info(f"Found {total_files} files to backup")
 
             # 2. Create Zip (Fast Mode)
             self.current_status["message"] = f"Archiving {total_files} files..."
             self.current_status["filename"] = base_name
+            app_logger.info("Starting compression (level 1 - fast mode)...")
             
             fd, temp_zip_path = tempfile.mkstemp(suffix=".zip")
             os.close(fd)
@@ -140,13 +161,22 @@ class BackupManager:
                     processed += 1
                     if processed % 100 == 0: # Check less often for speed
                         self.current_status["progress"] = int((processed / total_files) * 100)
+                        if processed % 500 == 0:  # Log every 500 files
+                            app_logger.debug(f"Compression progress: {processed}/{total_files} files ({self.current_status['progress']}%)")
 
             # 3. Move
             if self.cancel_requested: raise Exception("Cancelled by user")
             
             self.current_status["message"] = "Finalizing..."
+            app_logger.info("Moving backup to final destination...")
             shutil.move(temp_zip_path, target_zip)
             os.chmod(target_zip, 0o644)
+            
+            backup_size_mb = os.path.getsize(target_zip) / (1024 * 1024)
+            app_logger.info(f"✓ Backup completed successfully")
+            app_logger.info(f"Backup file: {base_name}")
+            app_logger.info(f"Backup size: {backup_size_mb:.2f} MB")
+            app_logger.info("=" * 60)
             
             self.current_status = {
                 "state": "success",
@@ -161,6 +191,11 @@ class BackupManager:
                 os.remove(temp_zip_path)
             
             state = "cancelled" if str(e) == "Cancelled by user" else "error"
+            if state == "cancelled":
+                app_logger.warning(f"Backup cancelled: {str(e)}")
+            else:
+                app_logger.error(f"Backup failed: {str(e)}")
+            
             self.current_status = {
                 "state": state,
                 "message": str(e),
@@ -174,19 +209,25 @@ class BackupManager:
         
         # Security check
         if not os.path.abspath(target).startswith(os.path.abspath(backup_dir)):
+             app_logger.error(f"Backup deletion denied: Invalid path attempted - {filename}")
              return {"status": "error", "message": "Invalid path"}
 
         if os.path.exists(target):
+            file_size = os.path.getsize(target) / (1024 * 1024)
             os.remove(target)
+            app_logger.info(f"Backup deleted: {filename} ({file_size:.2f} MB)")
             return {"status": "success", "message": "Backup deleted"}
+        app_logger.warning(f"Backup deletion failed: File not found - {filename}")
         return {"status": "error", "message": "File not found"}
 
     def get_disk_usage(self):
         backup_dir = os.path.expanduser(config.get("backup_path"))
         if not os.path.exists(backup_dir):
             os.makedirs(backup_dir, exist_ok=True)
+            app_logger.debug("Created backup directory")
             
         total, used, free = shutil.disk_usage(backup_dir)
+        app_logger.debug(f"Disk usage - Total: {total/(2**30):.2f}GB, Used: {used/(2**30):.2f}GB, Free: {free/(2**30):.2f}GB")
         return {
             "total_gb": round(total / (2**30), 2),
             "used_gb": round(used / (2**30), 2),

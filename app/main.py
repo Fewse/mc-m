@@ -11,7 +11,9 @@ import asyncio
 import os
 from app.logger import app_logger
 
-app_logger.log("[SYSTEM] Application starting...")
+app_logger.info("="*80)
+app_logger.info("MINECRAFT SERVER MANAGER APPLICATION STARTING")
+app_logger.info("="*80)
 
 app = FastAPI()
 
@@ -41,13 +43,17 @@ class Command(BaseModel):
 
 @app.post("/token", response_model=Token)
 async def login_for_access_token(request: Request, form_data: OAuth2PasswordRequestForm = Depends()):
+    client_ip = request.client.host
+    app_logger.info(f"Login attempt from {client_ip} for user: {form_data.username}")
     check_rate_limit(request)
     stored_hash = config.get("admin_password_hash")
     if not verify_password(form_data.password, stored_hash):
         record_failed_attempt(request)
+        app_logger.warning(f"Failed login attempt from {client_ip} for user: {form_data.username}")
         raise HTTPException(status_code=400, detail="Incorrect password")
     
     access_token = create_access_token(data={"sub": form_data.username})
+    app_logger.info(f"✓ Successful login from {client_ip} for user: {form_data.username}")
     return {"access_token": access_token, "token_type": "bearer"}
 
 @app.get("/", response_class=HTMLResponse)
@@ -56,18 +62,22 @@ async def get_root():
 
 @app.get("/api/stats")
 async def get_stats(current_user: str = Depends(get_current_active_user)):
+    app_logger.debug(f"Stats requested by user: {current_user}")
     return server_manager.get_stats()
 
 @app.post("/api/start")
 async def start_server(current_user: str = Depends(get_current_active_user)):
+    app_logger.info(f"Server start requested by user: {current_user}")
     return server_manager.start_server()
 
 @app.post("/api/stop")
 async def stop_server(current_user: str = Depends(get_current_active_user)):
+    app_logger.info(f"Server stop requested by user: {current_user}")
     return await server_manager.stop_server()
 
 @app.post("/api/command")
 async def send_command(cmd: Command, current_user: str = Depends(get_current_active_user)):
+    app_logger.info(f"Command sent by {current_user}: {cmd.command}")
     server_manager.send_command(cmd.command)
     return {"status": "sent"}
 
@@ -77,6 +87,13 @@ async def get_settings(current_user: str = Depends(get_current_active_user)):
 
 @app.post("/api/settings")
 async def update_settings(settings: Settings, current_user: str = Depends(get_current_active_user)):
+    app_logger.info(f"Settings update requested by user: {current_user}")
+    app_logger.info(f"  Server name: {settings.server_name}")
+    app_logger.info(f"  JAR path: {settings.jar_path}")
+    app_logger.info(f"  Server dir: {settings.server_dir}")
+    app_logger.info(f"  RAM: {settings.ram_min} - {settings.ram_max}")
+    app_logger.info(f"  Debug mode: {settings.debug_mode}")
+    
     config.set("server_name", settings.server_name)
     config.set("jar_path", settings.jar_path)
     config.set("java_path", settings.java_path)
@@ -85,24 +102,30 @@ async def update_settings(settings: Settings, current_user: str = Depends(get_cu
     config.set("server_dir", settings.server_dir)
     config.set("backup_path", settings.backup_path)
     config.set("debug_mode", settings.debug_mode)
+    app_logger.info("✓ Settings updated successfully")
     return {"status": "updated"}
 
 @app.post("/api/change-password")
 async def change_password(data: PasswordChange, current_user: str = Depends(get_current_active_user)):
+    app_logger.info(f"Password change requested by user: {current_user}")
     stored_hash = config.get("admin_password_hash")
     if not verify_password(data.current_password, stored_hash):
+        app_logger.warning(f"Password change failed: Incorrect current password")
         raise HTTPException(status_code=400, detail="Incorrect current password")
     
     config.set("admin_password_hash", hash_password(data.new_password))
+    app_logger.info(f"✓ Password changed successfully by user: {current_user}")
     return {"status": "success", "message": "Password changed"}
 
 # File Editor
 @app.get("/api/file")
 async def get_file_content(path: str, current_user: str = Depends(get_current_active_user)):
+    app_logger.info(f"File read requested by {current_user}: {path}")
     target = os.path.realpath(os.path.join(config.get("server_dir"), path))
     server_root = os.path.realpath(config.get("server_dir"))
     
     if not target.startswith(server_root):
+        app_logger.warning(f"File access denied: {path} (outside server root)")
         raise HTTPException(status_code=403, detail="Access denied")
     
     if os.path.exists(target) and os.path.isfile(target):
@@ -110,19 +133,23 @@ async def get_file_content(path: str, current_user: str = Depends(get_current_ac
             with open(target, 'r') as f:
                 return {"content": f.read()}
         except Exception:
+             app_logger.error(f"Error reading file: {path}")
              return {"content": "Error reading file."}
     return {"content": ""}
 
 @app.post("/api/file")
 async def save_file_content(path: str, content: Command, current_user: str = Depends(get_current_active_user)): 
+    app_logger.info(f"File save requested by {current_user}: {path}")
     target = os.path.realpath(os.path.join(config.get("server_dir"), path))
     server_root = os.path.realpath(config.get("server_dir"))
     
     if not target.startswith(server_root):
+        app_logger.warning(f"File save denied: {path} (outside server root)")
         raise HTTPException(status_code=403, detail="Access denied")
     
     with open(target, 'w') as f:
         f.write(content.command)
+    app_logger.info(f"✓ File saved: {path}")
     return {"status": "saved"}
 
 # Backups
@@ -144,10 +171,12 @@ async def cancel_backup_task(current_user: str = Depends(get_current_active_user
 
 @app.post("/api/backups")
 async def create_backup(type: str = "world", current_user: str = Depends(get_current_active_user)):
+    app_logger.info(f"Backup creation requested by {current_user}: type={type}")
     return await backup_manager.create_backup(type, "world")
 
 @app.delete("/api/backups/{filename}")
 async def delete_backup(filename: str, current_user: str = Depends(get_current_active_user)):
+    app_logger.info(f"Backup deletion requested by {current_user}: {filename}")
     return backup_manager.delete_backup(filename)
 
 # Logs
@@ -205,6 +234,7 @@ async def websocket_debug(websocket: WebSocket, token: str = Query(None)):
         return
 
     await websocket.accept()
+    app_logger.info("Debug WebSocket client connected")
     
     client_queue = asyncio.Queue(maxsize=500)
     app_logger.listeners.append(client_queue)
@@ -216,9 +246,11 @@ async def websocket_debug(websocket: WebSocket, token: str = Query(None)):
             await websocket.send_text(line)
             
     except WebSocketDisconnect:
+        app_logger.info("Debug WebSocket client disconnected")
         if client_queue in app_logger.listeners:
             app_logger.listeners.remove(client_queue)
-    except Exception:
+    except Exception as e:
+        app_logger.error(f"Debug WebSocket error: {e}")
         if client_queue in app_logger.listeners:
             app_logger.listeners.remove(client_queue)
 
@@ -231,6 +263,7 @@ async def websocket_endpoint(websocket: WebSocket, token: str = Query(None)):
         return
 
     await websocket.accept()
+    app_logger.info("Console WebSocket client connected")
     
     # Create a personal queue for this client
     client_queue = asyncio.Queue(maxsize=500)
@@ -247,10 +280,12 @@ async def websocket_endpoint(websocket: WebSocket, token: str = Query(None)):
             await websocket.send_text(line)
             
     except WebSocketDisconnect:
+        app_logger.info("Console WebSocket client disconnected")
         if config.get("debug_mode"): print(f"[TRACE] WS: Console Client disconnected.")
         if client_queue in server_manager.listeners:
             server_manager.listeners.remove(client_queue)
     except Exception as e:
+        app_logger.error(f"Console WebSocket error: {e}")
         if config.get("debug_mode"): print(f"[TRACE] WS: Error {e}")
         if client_queue in server_manager.listeners:
             server_manager.listeners.remove(client_queue)
