@@ -18,6 +18,7 @@ DEFAULT_CONFIG = {
 
 class ConfigManager:
     def __init__(self):
+        self.config = {}
         self.config = self.load_config()
 
     def load_config(self) -> Dict[str, Any]:
