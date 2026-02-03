@@ -16,22 +16,33 @@ class ServerManager:
         if self.is_running():
             return {"status": "error", "message": "Server is already running"}
 
-        jar_path = config.get("jar_path")
+        # Expand paths (handle ~)
+        jar_path = os.path.expanduser(config.get("jar_path"))
+        server_dir = os.path.expanduser(config.get("server_dir"))
+        java_path = os.path.expanduser(config.get("java_path", "java"))
+
+        print(f"[DEBUG] Starting server...")
+        print(f"[DEBUG] Jar: {jar_path}")
+        print(f"[DEBUG] Dir: {server_dir}")
+        print(f"[DEBUG] Java: {java_path}")
+
         if not os.path.exists(jar_path):
+             print(f"[ERROR] Jar not found at {jar_path}")
              return {"status": "error", "message": f"Jar file not found at {jar_path}"}
         
-        server_dir = config.get("server_dir")
         if not os.path.exists(server_dir):
              os.makedirs(server_dir, exist_ok=True)
 
         cmd = [
-            config.get("java_path", "java"),
+            java_path,
             f"-Xms{config.get('ram_min', '1G')}",
             f"-Xmx{config.get('ram_max', '2G')}",
             "-jar",
             jar_path,
             "nogui"
         ]
+        
+        print(f"[DEBUG] Command: {' '.join(cmd)}")
 
         try:
             self.process = subprocess.Popen(
@@ -44,8 +55,10 @@ class ServerManager:
                 bufsize=1 # Line buffered
             )
             # Start background thread/task to read stdout
+            print(f"[DEBUG] Process started with PID {self.process.pid}")
             return {"status": "success", "message": "Server started"}
         except Exception as e:
+            print(f"[ERROR] Failed to start process: {e}")
             return {"status": "error", "message": str(e)}
 
     def stop_server(self):

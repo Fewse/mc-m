@@ -343,8 +343,14 @@
             }, 2000);
         }
 
-        async function startServer() { await api('/start', 'POST'); }
-        async function stopServer() { await api('/stop', 'POST'); }
+        async function startServer() {
+            const res = await api('/start', 'POST');
+            if (res.status === 'error') alert("Error: " + res.message);
+        }
+        async function stopServer() {
+            const res = await api('/stop', 'POST');
+            if (res.status === 'error') alert("Error: " + res.message);
+        }
         async function sendCommand(cmd) {
             // Reuse for custom commands
             await api('/command', 'POST', { command: cmd });
