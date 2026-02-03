@@ -119,8 +119,25 @@ class ServerManager:
             except Exception as e:
                 app_logger.warning(f"Failed to write PID file: {e}")
 
-            # Start background thread/task to read stdout
+            # Immediate post-start verification
             app_logger.info(f"✓ Server process started successfully (PID: {self.process.pid})")
+            
+            # Debug: Check process immediately after start
+            import time
+            time.sleep(0.1)  # Brief pause to let process initialize
+            poll_result = self.process.poll()
+            app_logger.debug(f"Post-start check: poll()={poll_result}, stdout={self.process.stdout is not None}, stdin={self.process.stdin is not None}")
+            
+            if poll_result is not None:
+                app_logger.error(f"Process exited immediately with code: {poll_result}")
+                # Try to read any error output
+                try:
+                    remaining_output = self.process.stdout.read()
+                    if remaining_output:
+                        app_logger.error(f"Process output: {remaining_output}")
+                except:
+                    pass
+            
             app_logger.info("=" * 60)
             return {"status": "success", "message": "Server started"}
         except Exception as e:
@@ -199,22 +216,34 @@ class ServerManager:
 
     def is_running(self):
         if self.process:
-            if self.process.poll() is None:
+            poll_result = self.process.poll()
+            if config.get("debug_mode"):
+                app_logger.debug(f"is_running check: self.process exists, poll()={poll_result}")
+            if poll_result is None:
                 return True
             # Clean up if just exited
+            if config.get("debug_mode"):
+                app_logger.debug(f"Process exited with code {poll_result}, cleaning up")
             self._clean_pid_file()
             return False
             
         if self.external_pid:
+            if config.get("debug_mode"):
+                app_logger.debug(f"is_running check: external_pid={self.external_pid}")
             if psutil.pid_exists(self.external_pid):
                  # Verify it's not a zombie
                  try:
-                    if psutil.Process(self.external_pid).status() == psutil.STATUS_ZOMBIE:
+                    proc_status = psutil.Process(self.external_pid).status()
+                    if config.get("debug_mode"):
+                        app_logger.debug(f"External process status: {proc_status}")
+                    if proc_status == psutil.STATUS_ZOMBIE:
                         self.external_pid = None
                         self._clean_pid_file()
                         return False
                     return True
                  except psutil.NoSuchProcess:
+                    if config.get("debug_mode"):
+                        app_logger.debug(f"External process {self.external_pid} no longer exists")
                     self.external_pid = None
                     self._clean_pid_file()
                     return False
@@ -222,6 +251,8 @@ class ServerManager:
             self._clean_pid_file()
             return False
             
+        if config.get("debug_mode"):
+            app_logger.debug("is_running check: no process or external_pid")
         return False
         
     def _clean_pid_file(self):
@@ -257,24 +288,40 @@ class ServerManager:
         pid = None
         if self.process:
             pid = self.process.pid
+            if config.get("debug_mode"):
+                app_logger.debug(f"get_stats: Using self.process.pid={pid}")
         elif self.external_pid:
             pid = self.external_pid
+            if config.get("debug_mode"):
+                app_logger.debug(f"get_stats: Using external_pid={pid}")
+        else:
+            if config.get("debug_mode"):
+                app_logger.debug("get_stats: No PID available (no process or external_pid)")
 
-        if pid and self.is_running():
-            status = "online"
-            try:
-                p = psutil.Process(pid)
-                with p.oneshot():
-                    cpu = p.cpu_percent()
-                    ram = p.memory_info().rss / 1024 / 1024 # MB
-                app_logger.debug(f"Stats collected - CPU: {cpu}%, RAM: {ram:.1f}MB")
-            except psutil.NoSuchProcess:
-                status = "offline"
-                app_logger.debug("Stats: Process no longer exists")
-            except Exception as e:
-                app_logger.error(f"Failed to collect stats: {e}")
-                print(f"[ERROR] get_stats failed: {e}")
-                pass
+        if pid:
+            is_running_result = self.is_running()
+            if config.get("debug_mode"):
+                app_logger.debug(f"get_stats: PID={pid}, is_running()={is_running_result}")
+            
+            if is_running_result:
+                status = "online"
+                try:
+                    pid_exists = psutil.pid_exists(pid)
+                    if config.get("debug_mode"):
+                        app_logger.debug(f"get_stats: psutil.pid_exists({pid})={pid_exists}")
+                    
+                    p = psutil.Process(pid)
+                    with p.oneshot():
+                        cpu = p.cpu_percent()
+                        ram = p.memory_info().rss / 1024 / 1024 # MB
+                    app_logger.debug(f"Stats collected - CPU: {cpu}%, RAM: {ram:.1f}MB")
+                except psutil.NoSuchProcess:
+                    status = "offline"
+                    app_logger.debug("Stats: Process no longer exists (NoSuchProcess)")
+                except Exception as e:
+                    app_logger.error(f"Failed to collect stats: {e}")
+                    print(f"[ERROR] get_stats failed: {e}")
+                    pass
         
         return {
             "status": status,
@@ -290,17 +337,31 @@ import time
 def reader_thread(server_manager):
     app_logger.info("Server output reader thread started")
     app_logger.log(f"[TRACE] reader_thread: Started.")
+    last_process_state = None
+    
     while True:
         try:
+            has_process = server_manager.process is not None
+            has_stdout = server_manager.process.stdout if has_process else None
+            
+            # Log state changes
+            current_state = (has_process, has_stdout is not None)
+            if current_state != last_process_state:
+                if config.get("debug_mode"):
+                    app_logger.debug(f"reader_thread state change: process={has_process}, stdout={has_stdout is not None}")
+                last_process_state = current_state
+            
             if server_manager.process and server_manager.process.stdout:
                 line = server_manager.process.stdout.readline()
                 if line:
+                    if config.get("debug_mode"):
+                        app_logger.debug(f"reader_thread: Read line: {line.strip()[:100]}...")  # Log first 100 chars
                     server_manager.log_history.append(line)
                     server_manager.publish_queue.put(line)
-                    # Debug: log that we read something? Too noisy?
-                    # app_logger.log(f"[TRACE] Read: {line.strip()}")
                 else:
-                    if config.get("debug_mode"): app_logger.log(f"[TRACE] reader_thread: Empty line (EOF?).")
+                    if config.get("debug_mode"): 
+                        poll_result = server_manager.process.poll()
+                        app_logger.debug(f"reader_thread: Empty line, poll()={poll_result}")
                     # Process ended or stream closed
                     if not server_manager.is_running():
                          time.sleep(1)
