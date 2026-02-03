@@ -127,7 +127,7 @@ async def get_backup_usage(current_user: str = Depends(get_current_active_user))
 
 @app.post("/api/backups")
 async def create_backup(type: str = "world", current_user: str = Depends(get_current_active_user)):
-    return backup_manager.create_backup(type, "world")
+    return await backup_manager.create_backup(type, "world")
 
 @app.delete("/api/backups/{filename}")
 async def delete_backup(filename: str, current_user: str = Depends(get_current_active_user)):
