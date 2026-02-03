@@ -126,17 +126,21 @@ class ServerManager:
 # For simple reading of stdout without blocking the async loop, 
 # we can use a Thread to update the queue.
 import threading
+import time
+
 def reader_thread(server_manager):
     while True:
         if server_manager.process and server_manager.process.stdout:
             line = server_manager.process.stdout.readline()
             if line:
                 server_manager.console_queue.put(line)
-                # Notify listeners would happen here via some bridge
             else:
+                # Process ended or stream closed
                 if not server_manager.is_running():
-                    import time
                     time.sleep(1)
+        else:
+            # No process running
+            time.sleep(1)
 
 server_manager = ServerManager()
 
