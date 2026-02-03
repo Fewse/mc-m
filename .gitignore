@@ -1,3 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
 .env
-.agent/
 .DS_Store
+
+# App Data
+config.json
+*.db
+*.sqlite
+
+# Minecraft Server Data (if running in repo)
+server.jar
+logs/
+world/
+backups/
+crash-reports/
+debug/
+libraries/
+versions/
+*.log
+eula.txt
+server.properties
+usercache.json
+whitelist.json
+ops.json
+banned-*.json
+
+# Agent
+.agent/
