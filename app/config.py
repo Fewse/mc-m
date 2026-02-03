@@ -14,7 +14,8 @@ DEFAULT_CONFIG = {
     "server_dir": ".",
     "backup_path": "./backups",
     "admin_password_hash": "",  # SHA256 hash
-    "secret_key": secrets.token_hex(32)
+    "secret_key": secrets.token_hex(32),
+    "debug_mode": False
 }
 
 class ConfigManager:

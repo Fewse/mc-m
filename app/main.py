@@ -187,9 +187,43 @@ async def broadcast_logs():
             print(f"Broadcast error: {e}")
             await asyncio.sleep(1)
 
+# ... existing code ...
+from app.logger import app_logger
+
+# ... existing code ...
+
+@app.websocket("/ws/debug")
+async def websocket_debug(websocket: WebSocket, token: str = Query(None)):
+    if not config.get("debug_mode"):
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+
+    if not token or not verify_token_str(token):
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+
+    await websocket.accept()
+    
+    client_queue = asyncio.Queue(maxsize=500)
+    app_logger.listeners.append(client_queue)
+    
+    try:
+        while True:
+            # Simple stream of app logs
+            line = await client_queue.get()
+            await websocket.send_text(line)
+            
+    except WebSocketDisconnect:
+        if client_queue in app_logger.listeners:
+            app_logger.listeners.remove(client_queue)
+    except Exception:
+        if client_queue in app_logger.listeners:
+            app_logger.listeners.remove(client_queue)
+
 # WebSocket for Console
 @app.websocket("/ws/console")
 async def websocket_endpoint(websocket: WebSocket, token: str = Query(None)):
+# ... existing code ...
     if not token or not verify_token_str(token):
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
@@ -199,6 +233,7 @@ async def websocket_endpoint(websocket: WebSocket, token: str = Query(None)):
     # Create a personal queue for this client
     client_queue = asyncio.Queue(maxsize=500)
     server_manager.listeners.append(client_queue)
+    if config.get("debug_mode"): print(f"[TRACE] WS: Console Client connected. Total clients: {len(server_manager.listeners)}")
     
     try:
         # Send history first
@@ -210,8 +245,10 @@ async def websocket_endpoint(websocket: WebSocket, token: str = Query(None)):
             await websocket.send_text(line)
             
     except WebSocketDisconnect:
+        if config.get("debug_mode"): print(f"[TRACE] WS: Console Client disconnected.")
         if client_queue in server_manager.listeners:
             server_manager.listeners.remove(client_queue)
-    except Exception:
+    except Exception as e:
+        if config.get("debug_mode"): print(f"[TRACE] WS: Error {e}")
         if client_queue in server_manager.listeners:
             server_manager.listeners.remove(client_queue)

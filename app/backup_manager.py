@@ -59,6 +59,9 @@ class BackupManager:
         if self.current_status["state"] == "running":
             return {"status": "error", "message": "Backup already running"}
 
+        if config.get("debug_mode"):
+             print(f"[TRACE] BackupManager.create_backup: type={backup_type} world={world_name}")
+
         self.current_status = {
             "state": "running",
             "message": "Initializing...",

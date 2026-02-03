@@ -20,11 +20,15 @@ class ServerManager:
 
     def _check_orphan(self):
         """Check if a server is already running from a previous session"""
+        if config.get("debug_mode"): print(f"[TRACE] _check_orphan: checking {self.pid_file}")
+        
         if os.path.exists(self.pid_file):
             try:
                 with open(self.pid_file, 'r') as f:
                     pid = int(f.read().strip())
                 
+                if config.get("debug_mode"): print(f"[TRACE] _check_orphan: PID file found, pid={pid}")
+
                 if psutil.pid_exists(pid):
                     try:
                         p = psutil.Process(pid)
@@ -33,17 +37,24 @@ class ServerManager:
                             print(f"[INFO] Found orphaned server process {pid}. Adopting...")
                             self.external_pid = pid
                             self.log_history.append(f"[SYSTEM] Reconnected to running server (PID {pid}). Console input not available.")
-                    except Exception:
+                    except Exception as e:
+                        if config.get("debug_mode"): print(f"[TRACE] _check_orphan logic error: {e}")
                         pass
                 else:
+                    if config.get("debug_mode"): print(f"[TRACE] _check_orphan: PID {pid} is dead. Cleaning up.")
                     # Stale PID file
                     os.remove(self.pid_file)
-            except Exception:
+            except Exception as e:
+                if config.get("debug_mode"): print(f"[TRACE] _check_orphan: Read error: {e}")
                 pass
 
 
     def start_server(self):
+        if config.get("debug_mode"):
+             print(f"[TRACE] start_server called. Current State: {self.is_running()}")
+
         if self.is_running():
+            print(f"[TRACE] Server already running.")
             return {"status": "error", "message": "Server is already running"}
 
         # Expand paths (handle ~)
@@ -101,16 +112,24 @@ class ServerManager:
             return {"status": "error", "message": str(e)}
 
     async def stop_server(self):
+        if config.get("debug_mode"):
+             print(f"[TRACE] stop_server called.")
+
         if not self.is_running():
+            print(f"[TRACE] stop_server: Server not running.")
             return {"status": "error", "message": "Server is not running"}
         
+        print(f"[TRACE] stop_server: Sending stop command.")
         self.send_command("stop")
         
         # Wait for graceful shutdown
-        for _ in range(20): # Wait up to 10 seconds
+        for i in range(20): # Wait up to 10 seconds
             if not self.is_running():
+                print(f"[TRACE] stop_server: Server stopped gracefully after {i*0.5}s.")
                 return {"status": "success", "message": "Server stopped gracefully"}
             await asyncio.sleep(0.5)
+        
+        print(f"[TRACE] stop_server: Timed out waiting for stop.")
         
         # Fallback if external PID and command didn't work (no stdin)
         if self.external_pid and psutil.pid_exists(self.external_pid):
@@ -119,15 +138,21 @@ class ServerManager:
         return {"status": "warning", "message": "Stop command sent, but server is still running. Use Kill if needed."}
 
     def force_kill(self):
+        if config.get("debug_mode"):
+             print(f"[TRACE] force_kill called.")
+             
         pid = self.external_pid
         if self.process:
             pid = self.process.pid
             self.process.kill()
             self.process = None
+            print(f"[TRACE] force_kill: Killed subprocess {pid}.")
         elif self.external_pid:
             try:
                 os.kill(self.external_pid, 9) # SIGKILL
+                print(f"[TRACE] force_kill: Sigkilled external pid {self.external_pid}.")
             except ProcessLookupError:
+                print(f"[TRACE] force_kill: External pid {self.external_pid} not found (already gone).")
                 pass
             self.external_pid = None
         
@@ -177,13 +202,17 @@ class ServerManager:
     def send_command(self, cmd: str):
         if self.process and self.process.stdin:
             try:
+                if config.get("debug_mode"): print(f"[TRACE] send_command: Writing '{cmd}' to stdin.")
                 self.process.stdin.write(cmd + "\n")
                 self.process.stdin.flush()
-            except IOError:
+            except IOError as e:
+                if config.get("debug_mode"): print(f"[ERROR] send_command: IOError {e}")
                 pass
         elif self.external_pid:
              # Check if we can use RCON? Or maybe just log that we can't
              print(f"[WARN] Cannot send command '{cmd}' to orphaned process {self.external_pid}")
+        else:
+             if config.get("debug_mode"): print(f"[TRACE] send_command: Ignored '{cmd}', no process attached.")
 
 
     def get_stats(self):
@@ -222,6 +251,7 @@ import threading
 import time
 
 def reader_thread(server_manager):
+    if config.get("debug_mode"): print(f"[TRACE] reader_thread: Started.")
     while True:
         try:
             if server_manager.process and server_manager.process.stdout:
@@ -230,13 +260,15 @@ def reader_thread(server_manager):
                     server_manager.log_history.append(line)
                     server_manager.publish_queue.put(line)
                 else:
+                    if config.get("debug_mode"): print(f"[TRACE] reader_thread: Empty line (EOF?).")
                     # Process ended or stream closed
                     if not server_manager.is_running():
                          time.sleep(1)
             else:
                 # No process running
                 time.sleep(1)
-        except Exception:
+        except Exception as e:
+             if config.get("debug_mode"): print(f"[ERROR] reader_thread exception: {e}")
              # Prevent thread crash on IO errors
              time.sleep(1)
 

@@ -106,6 +106,9 @@
                 <button onclick="showUnimplemented('logs')"
                     class="hover:bg-gray-700 text-left px-4 py-2 rounded text-gray-300" data-tab="logs">Log
                     History</button>
+                <button onclick="showUnimplemented('debug')" id="nav-debug"
+                    class="hover:bg-gray-700 text-left px-4 py-2 rounded text-gray-300 hidden" data-tab="debug">Debug
+                    Console</button>
             </nav>
 
             <!-- Content Area -->
@@ -194,7 +197,16 @@
                         </div>
                         <button onclick="saveSettings()"
                             class="bg-blue-600 hover:bg-blue-700 px-6 py-2 rounded font-bold w-full">Save
-                            Settings</button>
+                            Setting</button>
+                        <div class="mt-4 pt-4 border-t border-gray-700">
+                            <label class="flex items-center space-x-2 cursor-pointer">
+                                <input id="set-debug-mode" type="checkbox"
+                                    class="form-checkbox h-5 w-5 text-red-600 bg-gray-700 border-gray-600 rounded">
+                                <span class="text-sm text-gray-300 font-bold">Enable Debug Mode</span>
+                            </label>
+                            <p class="text-xs text-gray-500 mt-1">Enables verbose logging and debug console. Requires
+                                refresh.</p>
+                        </div>
                     </div>
 
                     <div class="bg-gray-800 p-6 rounded-lg border border-gray-700 space-y-4">
@@ -362,7 +374,7 @@
         // --- Navigation ---
         function showUnimplemented(tab) {
             // Hide all views
-            ['dashboard', 'settings', 'files', 'backups', 'logs'].forEach(v => {
+            ['dashboard', 'settings', 'files', 'backups', 'logs', 'debug'].forEach(v => {
                 const el = document.getElementById('view-' + v);
                 if (el) el.classList.add('hidden');
             });
@@ -390,6 +402,11 @@
             if (tab === 'backups') loadBackups();
             if (tab === 'logs') loadLogs();
             if (tab === 'settings') loadSettings();
+            if (tab === 'debug') {
+                // Auto scroll to bottom
+                const d = document.getElementById('debug-output');
+                d.scrollTop = d.scrollHeight;
+            }
         }
 
         // --- API Helpers ---
@@ -545,6 +562,19 @@
             ws.onclose = () => setTimeout(connectWS, 3000);
         }
 
+        let debugWs = null;
+        function connectDebugWS() {
+            if (debugWs) return; // Already connected
+            const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+            debugWs = new WebSocket(protocol + '://' + window.location.host + '/ws/debug?token=' + encodeURIComponent(token));
+            debugWs.onmessage = function (event) {
+                const consoleDiv = document.getElementById('debug-output');
+                consoleDiv.innerText += event.data + "\n";
+                consoleDiv.scrollTop = consoleDiv.scrollHeight;
+            };
+            // No reconnect logic for now, standard auto-reload might kill it
+        }
+
         async function loadSettings() {
             const s = await api('/settings');
             document.getElementById('set-server-name').value = s.server_name;
@@ -554,6 +584,18 @@
             document.getElementById('set-jar-path').value = s.jar_path;
             document.getElementById('set-server-dir').value = s.server_dir;
             document.getElementById('set-backup-path').value = s.backup_path || "./backups";
+
+            // Debug Mode
+            const debugBox = document.getElementById('set-debug-mode');
+            debugBox.checked = s.debug_mode;
+
+            const debugTab = document.getElementById('nav-debug');
+            if (s.debug_mode) {
+                debugTab.classList.remove('hidden');
+                connectDebugWS();
+            } else {
+                debugTab.classList.add('hidden');
+            }
         }
 
         async function saveSettings() {
@@ -565,6 +607,7 @@
                 jar_path: document.getElementById('set-jar-path').value,
                 server_dir: document.getElementById('set-server-dir').value,
                 backup_path: document.getElementById('set-backup-path').value,
+                debug_mode: document.getElementById('set-debug-mode').checked
             };
             await api('/settings', 'POST', s);
             alert('Settings saved!');
