@@ -75,8 +75,10 @@
             <div class="flex items-center space-x-4">
                 <span id="server-status"
                     class="px-3 py-1 rounded-full text-xs font-bold bg-gray-600 text-gray-300">OFFLINE</span>
+                <span class="text-gray-400 text-sm hidden sm:inline">Players: <span id="player-count">0</span></span>
                 <span class="text-gray-400 text-sm hidden sm:inline">CPU: <span id="cpu-stat">0%</span></span>
                 <span class="text-gray-400 text-sm hidden sm:inline">RAM: <span id="ram-stat">0 MB</span></span>
+                <span class="text-gray-400 text-sm hidden md:inline">Uptime: <span id="uptime-stat">N/A</span></span>
                 <button onclick="logout()" class="text-sm text-red-400 hover:text-red-300">Logout</button>
             </div>
         </header>
@@ -121,8 +123,18 @@
                             class="bg-green-600 hover:bg-green-700 px-6 py-2 rounded font-bold shadow-lg transition">Start</button>
                         <button onclick="stopServer()"
                             class="bg-yellow-600 hover:bg-yellow-700 px-6 py-2 rounded font-bold shadow-lg transition">Stop</button>
+                        <button onclick="restartServer()"
+                            class="bg-orange-600 hover:bg-orange-700 px-6 py-2 rounded font-bold shadow-lg transition">Restart</button>
                         <button onclick="sendCommand('kill')"
                             class="bg-red-600 hover:bg-red-700 px-6 py-2 rounded font-bold shadow-lg transition">Kill</button>
+                    </div>
+
+                    <!-- Player List -->
+                    <div class="bg-gray-800 rounded-lg border border-gray-700 p-4">
+                        <h3 class="text-lg font-bold mb-2 text-green-500">Online Players</h3>
+                        <div id="player-list" class="text-sm text-gray-300">
+                            <span class="text-gray-500">No players online</span>
+                        </div>
                     </div>
 
                     <!-- Console -->
@@ -421,6 +433,7 @@
                     const stats = await api('/stats');
                     document.getElementById('cpu-stat').innerText = stats.cpu + '%';
                     document.getElementById('ram-stat').innerText = stats.ram;
+                    document.getElementById('uptime-stat').innerText = stats.uptime || 'N/A';
 
                     const badge = document.getElementById('server-status');
                     if (stats.status === 'online') {
@@ -429,6 +442,18 @@
                     } else {
                         badge.innerText = 'OFFLINE';
                         badge.className = 'px-3 py-1 rounded-full text-xs font-bold bg-red-600 text-white';
+                    }
+
+                    // Fetch and update player list
+                    const playerData = await api('/players');
+                    document.getElementById('player-count').innerText = playerData.count;
+                    const playerList = document.getElementById('player-list');
+                    if (playerData.count > 0) {
+                        playerList.innerHTML = playerData.players.map(p =>
+                            `<div class="py-1"><span class="text-green-400">●</span> ${p}</div>`
+                        ).join('');
+                    } else {
+                        playerList.innerHTML = '<span class="text-gray-500">No players online</span>';
                     }
                 } catch (e) { console.error(e); }
             }, 2000);
@@ -440,6 +465,11 @@
         }
         async function stopServer() {
             const res = await api('/stop', 'POST');
+            if (res.status === 'error') alert("Error: " + res.message);
+        }
+        async function restartServer() {
+            if (!confirm('Restart the server? All players will be disconnected.')) return;
+            const res = await api('/restart', 'POST');
             if (res.status === 'error') alert("Error: " + res.message);
         }
         async function sendCommand(cmd) {

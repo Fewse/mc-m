@@ -3,6 +3,8 @@ import subprocess
 import os
 import psutil
 import queue
+import time
+import re
 from collections import deque
 from typing import Optional, List
 from app.config import config
@@ -16,7 +18,10 @@ class ServerManager:
         self.listeners = [] # WebSocket listeners
         self.pid_file = os.path.join(config.get("server_dir"), "server.pid")
         self.external_pid: Optional[int] = None
-        
+        self.external_pid: Optional[int] = None
+        self.server_start_time: Optional[float] = None  # Track when server started
+        self.players: dict = {}  # Track online players: {username: join_time}
+
         self._check_orphan()
 
     def _check_orphan(self):
@@ -121,6 +126,7 @@ class ServerManager:
 
             # Immediate post-start verification
             app_logger.info(f"✓ Server process started successfully (PID: {self.process.pid})")
+            self.server_start_time = time.time()  # Track start time for uptime
             
             # Debug: Check process immediately after start
             import time
@@ -178,6 +184,40 @@ class ServerManager:
              return {"status": "warning", "message": "Cannot stop orphaned server gracefully (no console access). Use Kill."}
 
         return {"status": "warning", "message": "Stop command sent, but server is still running. Use Kill if needed."}
+
+    async def restart_server(self):
+        """Restart the server by stopping then starting it"""
+        app_logger.info("=" * 60)
+        app_logger.info("SERVER RESTART REQUESTED")
+        app_logger.info("=" * 60)
+        
+        if not self.is_running():
+            app_logger.warning("Server restart aborted: Server is not running, starting instead")
+            return self.start_server()
+        
+        # Stop the server first
+        app_logger.info("Step 1/2: Stopping server...")
+        stop_result = await self.stop_server()
+        
+        if stop_result["status"] == "error":
+            app_logger.error("Restart failed: Could not stop server")
+            return {"status": "error", "message": "Failed to stop server for restart"}
+        
+        # Wait a moment to ensure clean shutdown
+        app_logger.info("Waiting 2 seconds before restart...")
+        await asyncio.sleep(2)
+        
+        # Start the server
+        app_logger.info("Step 2/2: Starting server...")
+        start_result = self.start_server()
+        
+        if start_result["status"] == "success":
+            app_logger.info("✓ Server restarted successfully")
+            app_logger.info("=" * 60)
+            return {"status": "success", "message": "Server restarted successfully"}
+        else:
+            app_logger.error(f"Restart failed: Could not start server - {start_result.get('message')}")
+            return {"status": "error", "message": f"Failed to start server after stop: {start_result.get('message')}"}
 
     def force_kill(self):
         app_logger.warning("FORCE KILL requested")
@@ -279,6 +319,9 @@ class ServerManager:
              app_logger.debug(f"Command '{cmd}' ignored - no active process")
              if config.get("debug_mode"): print(f"[TRACE] send_command: Ignored '{cmd}', no process attached.")
 
+    def get_players(self):
+        """Get list of currently online players"""
+        return list(self.players.keys())
 
     def get_stats(self):
         # ALWAYS log - not behind debug mode
@@ -322,10 +365,26 @@ class ServerManager:
                     print(f"[ERROR] get_stats failed: {e}")
                     pass
         
+        # Calculate uptime
+        uptime = "N/A"
+        if status == "online" and self.server_start_time:
+            uptime_seconds = int(time.time() - self.server_start_time)
+            days = uptime_seconds // 86400
+            hours = (uptime_seconds % 86400) // 3600
+            minutes = (uptime_seconds % 3600) // 60
+            
+            if days > 0:
+                uptime = f"{days}d {hours}h {minutes}m"
+            elif hours > 0:
+                uptime = f"{hours}h {minutes}m"
+            else:
+                uptime = f"{minutes}m"
+        
         result = {
             "status": status,
             "cpu": cpu,
-            "ram": f"{ram:.1f} MB"
+            "ram": f"{ram:.1f} MB",
+            "uptime": uptime
         }
         app_logger.info(f"get_stats() returning: {result}")
         return result
@@ -357,6 +416,21 @@ def reader_thread(server_manager):
                 if line:
                     if config.get("debug_mode"):
                         app_logger.debug(f"reader_thread: Read line: {line.strip()[:100]}...")  # Log first 100 chars
+                    
+                    # Parse for player join/leave events
+                    join_match = re.search(r'(\w+)\[.+?\] logged in', line)
+                    leave_match = re.search(r'(\w+) left the game', line)
+                    
+                    if join_match:
+                        username = join_match.group(1)
+                        server_manager.players[username] = time.time()
+                        app_logger.info(f"Player joined: {username}")
+                    elif leave_match:
+                        username = leave_match.group(1)
+                        if username in server_manager.players:
+                            del server_manager.players[username]
+                            app_logger.info(f"Player left: {username}")
+                    
                     server_manager.log_history.append(line)
                     server_manager.publish_queue.put(line)
                 else:

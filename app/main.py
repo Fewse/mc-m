@@ -65,6 +65,12 @@ async def get_stats(current_user: str = Depends(get_current_active_user)):
     app_logger.info(f"/api/stats called by user: {current_user}")
     return server_manager.get_stats()
 
+@app.get("/api/players")
+async def get_players(current_user: str = Depends(get_current_active_user)):
+    players = server_manager.get_players()
+    app_logger.info(f"/api/players called by user: {current_user}, {len(players)} online")
+    return {"players": players, "count": len(players)}
+
 @app.post("/api/start")
 async def start_server(current_user: str = Depends(get_current_active_user)):
     app_logger.info(f"Server start requested by user: {current_user}")
@@ -74,6 +80,12 @@ async def start_server(current_user: str = Depends(get_current_active_user)):
 async def stop_server(current_user: str = Depends(get_current_active_user)):
     app_logger.info(f"Server stop requested by user: {current_user}")
     return await server_manager.stop_server()
+
+@app.post("/api/restart")
+async def restart_server(current_user: str = Depends(get_current_active_user)):
+    app_logger.info(f"Server restart requested by user: {current_user}")
+    return await server_manager.restart_server()
+
 
 @app.post("/api/command")
 async def send_command(cmd: Command, current_user: str = Depends(get_current_active_user)):
