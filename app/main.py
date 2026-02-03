@@ -27,6 +27,7 @@ class Settings(BaseModel):
     ram_max: str
     server_dir: str
     backup_path: str
+    debug_mode: bool = False
 
 class PasswordChange(BaseModel):
     current_password: str
@@ -80,6 +81,7 @@ async def update_settings(settings: Settings, current_user: str = Depends(get_cu
     config.set("ram_max", settings.ram_max)
     config.set("server_dir", settings.server_dir)
     config.set("backup_path", settings.backup_path)
+    config.set("debug_mode", settings.debug_mode)
     return {"status": "updated"}
 
 @app.post("/api/change-password")

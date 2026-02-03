@@ -30,7 +30,11 @@ class ConfigManager:
         
         try:
             with open(CONFIG_FILE, 'r') as f:
-                return json.load(f)
+                data = json.load(f)
+                # Merge with default to ensure new keys (like debug_mode) are present
+                c = DEFAULT_CONFIG.copy()
+                c.update(data)
+                return c
         except Exception:
             return DEFAULT_CONFIG.copy()
 
