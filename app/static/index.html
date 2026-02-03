@@ -222,8 +222,11 @@
 
                 <!-- Backups View -->
                 <div id="view-backups" class="hidden space-y-6 max-w-4xl">
-                    <div class="flex justify-between items-center">
-                        <h2 class="text-2xl font-bold">Backups</h2>
+                    <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                        <div>
+                            <h2 class="text-2xl font-bold">Backups</h2>
+                            <p class="text-xs text-gray-400 mt-1">Storage: <span id="backup-usage">Loading...</span></p>
+                        </div>
                         <div class="space-x-2">
                             <button onclick="createBackup('world')"
                                 class="bg-green-600 hover:bg-green-700 px-4 py-2 rounded text-sm font-bold">Backup
@@ -486,6 +489,7 @@
 
         // Backups
         async function loadBackups() {
+            // Load list
             const list = await api('/backups');
             const tbody = document.getElementById('backup-list');
             tbody.innerHTML = '';
@@ -501,6 +505,16 @@
                 `;
                 tbody.appendChild(tr);
             });
+
+            // Load Usage
+            try {
+                const usage = await api('/backups/usage');
+                const percent = Math.round((usage.used_gb / usage.total_gb) * 100);
+                document.getElementById('backup-usage').innerText =
+                    `${usage.free_gb} GB free / ${usage.total_gb} GB total (${percent}% used)`;
+            } catch (e) {
+                console.error(e);
+            }
         }
 
         async function createBackup(type) {

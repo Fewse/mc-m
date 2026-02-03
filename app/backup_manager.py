@@ -106,4 +106,16 @@ class BackupManager:
             return {"status": "success", "message": "Backup deleted"}
         return {"status": "error", "message": "File not found"}
 
+    def get_disk_usage(self):
+        backup_dir = os.path.expanduser(config.get("backup_path"))
+        if not os.path.exists(backup_dir):
+            os.makedirs(backup_dir, exist_ok=True)
+            
+        total, used, free = shutil.disk_usage(backup_dir)
+        return {
+            "total_gb": round(total / (2**30), 2),
+            "used_gb": round(used / (2**30), 2),
+            "free_gb": round(free / (2**30), 2)
+        }
+
 backup_manager = BackupManager()

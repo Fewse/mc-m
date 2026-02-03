@@ -121,6 +121,10 @@ async def save_file_content(path: str, content: Command, current_user: str = Dep
 async def list_backups(current_user: str = Depends(get_current_active_user)):
     return backup_manager.list_backups()
 
+@app.get("/api/backups/usage")
+async def get_backup_usage(current_user: str = Depends(get_current_active_user)):
+    return backup_manager.get_disk_usage()
+
 @app.post("/api/backups")
 async def create_backup(type: str = "world", current_user: str = Depends(get_current_active_user)):
     return backup_manager.create_backup(type, "world")
