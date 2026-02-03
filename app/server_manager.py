@@ -13,6 +13,34 @@ class ServerManager:
         self.log_history = deque(maxlen=200) # Store last 200 lines for history
         self.publish_queue = queue.Queue() # Unbounded queue for inter-thread communication
         self.listeners = [] # WebSocket listeners
+        self.pid_file = os.path.join(config.get("server_dir"), "server.pid")
+        self.external_pid: Optional[int] = None
+        
+        self._check_orphan()
+
+    def _check_orphan(self):
+        """Check if a server is already running from a previous session"""
+        if os.path.exists(self.pid_file):
+            try:
+                with open(self.pid_file, 'r') as f:
+                    pid = int(f.read().strip())
+                
+                if psutil.pid_exists(pid):
+                    try:
+                        p = psutil.Process(pid)
+                        # Optional: check if it looks like java/minecraft
+                        if p.status() != psutil.STATUS_ZOMBIE:
+                            print(f"[INFO] Found orphaned server process {pid}. Adopting...")
+                            self.external_pid = pid
+                            self.log_history.append(f"[SYSTEM] Reconnected to running server (PID {pid}). Console input not available.")
+                    except Exception:
+                        pass
+                else:
+                    # Stale PID file
+                    os.remove(self.pid_file)
+            except Exception:
+                pass
+
 
     def start_server(self):
         if self.is_running():
@@ -56,6 +84,15 @@ class ServerManager:
                 text=True,
                 bufsize=1 # Line buffered
             )
+            
+            # Save PID
+            self.external_pid = None
+            try:
+                with open(self.pid_file, 'w') as f:
+                    f.write(str(self.process.pid))
+            except Exception as e:
+                print(f"[WARN] Failed to write PID file: {e}")
+
             # Start background thread/task to read stdout
             print(f"[DEBUG] Process started with PID {self.process.pid}")
             return {"status": "success", "message": "Server started"}
@@ -74,28 +111,79 @@ class ServerManager:
             if not self.is_running():
                 return {"status": "success", "message": "Server stopped gracefully"}
             await asyncio.sleep(0.5)
-            
+        
+        # Fallback if external PID and command didn't work (no stdin)
+        if self.external_pid and psutil.pid_exists(self.external_pid):
+             return {"status": "warning", "message": "Cannot stop orphaned server gracefully (no console access). Use Kill."}
+
         return {"status": "warning", "message": "Stop command sent, but server is still running. Use Kill if needed."}
 
     def force_kill(self):
+        pid = self.external_pid
         if self.process:
+            pid = self.process.pid
             self.process.kill()
             self.process = None
+        elif self.external_pid:
+            try:
+                os.kill(self.external_pid, 9) # SIGKILL
+            except ProcessLookupError:
+                pass
+            self.external_pid = None
+        
+        # Clean PID file
+        if os.path.exists(self.pid_file):
+            try:
+                os.remove(self.pid_file)
+            except: pass
+
+        if pid:
             return {"status": "success", "message": "Process killed"}
         return {"status": "error", "message": "No process to kill"}
 
     def is_running(self):
-        if self.process is None:
+        if self.process:
+            if self.process.poll() is None:
+                return True
+            # Clean up if just exited
+            self._clean_pid_file()
             return False
-        return self.process.poll() is None
+            
+        if self.external_pid:
+            if psutil.pid_exists(self.external_pid):
+                 # Verify it's not a zombie
+                 try:
+                    if psutil.Process(self.external_pid).status() == psutil.STATUS_ZOMBIE:
+                        self.external_pid = None
+                        self._clean_pid_file()
+                        return False
+                    return True
+                 except psutil.NoSuchProcess:
+                    self.external_pid = None
+                    self._clean_pid_file()
+                    return False
+            self.external_pid = None
+            self._clean_pid_file()
+            return False
+            
+        return False
+        
+    def _clean_pid_file(self):
+        if os.path.exists(self.pid_file):
+            try:
+                os.remove(self.pid_file)
+            except: pass
 
     def send_command(self, cmd: str):
-        if self.is_running() and self.process.stdin:
+        if self.process and self.process.stdin:
             try:
                 self.process.stdin.write(cmd + "\n")
                 self.process.stdin.flush()
             except IOError:
                 pass
+        elif self.external_pid:
+             # Check if we can use RCON? Or maybe just log that we can't
+             print(f"[WARN] Cannot send command '{cmd}' to orphaned process {self.external_pid}")
 
 
     def get_stats(self):
@@ -103,15 +191,24 @@ class ServerManager:
         ram = 0
         status = "offline"
         
-        if self.is_running():
+        pid = None
+        if self.process:
+            pid = self.process.pid
+        elif self.external_pid:
+            pid = self.external_pid
+
+        if pid and self.is_running():
             status = "online"
             try:
-                p = psutil.Process(self.process.pid)
+                p = psutil.Process(pid)
                 with p.oneshot():
                     cpu = p.cpu_percent()
                     ram = p.memory_info().rss / 1024 / 1024 # MB
             except psutil.NoSuchProcess:
                 status = "offline"
+            except Exception as e:
+                print(f"[ERROR] get_stats failed: {e}")
+                pass
         
         return {
             "status": status,
@@ -135,7 +232,7 @@ def reader_thread(server_manager):
                 else:
                     # Process ended or stream closed
                     if not server_manager.is_running():
-                        time.sleep(1)
+                         time.sleep(1)
             else:
                 # No process running
                 time.sleep(1)
