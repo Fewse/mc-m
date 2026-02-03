@@ -9,6 +9,7 @@ from app.backup_manager import backup_manager
 from pydantic import BaseModel
 import asyncio
 import os
+from app.logger import app_logger
 
 app = FastAPI()
 
@@ -189,10 +190,7 @@ async def broadcast_logs():
             print(f"Broadcast error: {e}")
             await asyncio.sleep(1)
 
-# ... existing code ...
-from app.logger import app_logger
 
-# ... existing code ...
 
 @app.websocket("/ws/debug")
 async def websocket_debug(websocket: WebSocket, token: str = Query(None)):
