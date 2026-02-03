@@ -25,7 +25,35 @@ class BackupManager:
             return {"status": "success", "message": "Cancellation requested"}
         return {"status": "error", "message": "No backup running"}
 
-    # ... list_backups and get_unique_path unchanged ...
+    def list_backups(self):
+        backup_dir = os.path.expanduser(config.get("backup_path"))
+        if not os.path.exists(backup_dir):
+            return []
+        
+        # List zip files
+        files = glob.glob(os.path.join(backup_dir, "*.zip"))
+        backups = []
+        for f in files:
+            try:
+                stat = os.stat(f)
+                backups.append({
+                    "name": os.path.basename(f),
+                    "size": stat.st_size,
+                    "created": datetime.datetime.fromtimestamp(stat.st_mtime).isoformat()
+                })
+            except FileNotFoundError:
+                pass
+        return sorted(backups, key=lambda x: x["created"], reverse=True)
+
+    def _get_unique_path(self, directory, filename):
+        """Ensures filename is unique by appending counter if needed"""
+        name, ext = os.path.splitext(filename)
+        counter = 1
+        new_filename = filename
+        while os.path.exists(os.path.join(directory, new_filename)):
+            new_filename = f"{name}_{counter}{ext}"
+            counter += 1
+        return os.path.join(directory, new_filename)
 
     async def create_backup(self, backup_type="world", world_name="world"):
         if self.current_status["state"] == "running":
