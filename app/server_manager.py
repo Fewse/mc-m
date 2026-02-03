@@ -88,19 +88,7 @@ class ServerManager:
             except IOError:
                 pass
 
-    async def read_stream_loop(self):
-        """Must be scheduled as background task"""
-        while True:
-            if self.process and self.is_running() and self.process.stdout:
-                # Blocking read, so we should run this in executor or carefully
-                # Ideally, we use asyncio.create_subprocess_exec for async, 
-                # but for simplicity with standard Popen we can peek.
-                # Let's switch to a non-blocking read or thread.
-                # Actually, standard readline() in a thread is best for Popen.
-                await asyncio.sleep(0.1) # Placeholder for loop mechanism logic
-                pass
-            else:
-                await asyncio.sleep(1)
+
 
     def get_stats(self):
         cpu = 0
@@ -130,17 +118,21 @@ import time
 
 def reader_thread(server_manager):
     while True:
-        if server_manager.process and server_manager.process.stdout:
-            line = server_manager.process.stdout.readline()
-            if line:
-                server_manager.console_queue.put(line)
+        try:
+            if server_manager.process and server_manager.process.stdout:
+                line = server_manager.process.stdout.readline()
+                if line:
+                    server_manager.console_queue.put(line)
+                else:
+                    # Process ended or stream closed
+                    if not server_manager.is_running():
+                        time.sleep(1)
             else:
-                # Process ended or stream closed
-                if not server_manager.is_running():
-                    time.sleep(1)
-        else:
-            # No process running
-            time.sleep(1)
+                # No process running
+                time.sleep(1)
+        except Exception:
+             # Prevent thread crash on IO errors
+             time.sleep(1)
 
 server_manager = ServerManager()
 

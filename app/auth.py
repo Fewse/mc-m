@@ -23,15 +23,6 @@ def setup_initial_password():
 
 setup_initial_password() # Run on module load to ensure secure setup
 
-async def get_current_user(token: str = Depends(oauth2_scheme)):
-    # In a real app we'd decode a JWT here. 
-    # For this simple app, we can just use a simple session logic or 
-    # verify the token against a known session.
-    # To keep it extremely simple per requirements (simple install),
-    # we will use the 'token' as a simple session key or just implement
-    # a proper JWT if needed. 
-    # Let's stick to a basic JWT implementation for robustness.
-    pass
 
 # Actual JWT implementation
 from datetime import datetime, timedelta
@@ -47,7 +38,7 @@ def create_access_token(data: dict):
     encoded_jwt = jwt.encode(to_encode, config.get("secret_key"), algorithm=ALGORITHM)
     return encoded_jwt
 
-async def get_current_active_user(token: str = Depends(oauth2_scheme)):
+async def get_current_user(token: str = Depends(oauth2_scheme)):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -61,3 +52,14 @@ async def get_current_active_user(token: str = Depends(oauth2_scheme)):
     except JWTError:
         raise credentials_exception
     return username
+
+async def get_current_active_user(current_user: str = Depends(get_current_user)):
+    return current_user
+
+def verify_token_str(token: str):
+    try:
+        payload = jwt.decode(token, config.get("secret_key"), algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        return username
+    except JWTError:
+        return None

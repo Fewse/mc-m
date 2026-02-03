@@ -1,8 +1,8 @@
-from fastapi import FastAPI, Depends, WebSocket, WebSocketDisconnect, HTTPException, Request
+from fastapi import FastAPI, Depends, WebSocket, WebSocketDisconnect, HTTPException, Request, Query, status
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.security import OAuth2PasswordRequestForm
-from app.auth import oauth2_scheme, verify_password, create_access_token, get_current_active_user, config, hash_password
+from app.auth import oauth2_scheme, verify_password, create_access_token, get_current_active_user, config, hash_password, verify_token_str
 from app.server_manager import server_manager
 from app.rate_limiter import check_rate_limit, record_failed_attempt
 from app.backup_manager import backup_manager
@@ -162,9 +162,11 @@ async def get_logs(lines: int = 200, current_user: str = Depends(get_current_act
 
 # WebSocket for Console
 @app.websocket("/ws/console")
-async def websocket_endpoint(websocket: WebSocket):
-    # Note: Authentication on WebSocket is tricky with Header, usually done via Query param or Cookie.
-    # We will skip strict auth for WS for this prototype or check a query param token.
+async def websocket_endpoint(websocket: WebSocket, token: str = Query(None)):
+    if not token or not verify_token_str(token):
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+
     await websocket.accept()
     try:
         while True:
