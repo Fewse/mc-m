@@ -125,6 +125,10 @@ async def list_backups(current_user: str = Depends(get_current_active_user)):
 async def get_backup_usage(current_user: str = Depends(get_current_active_user)):
     return backup_manager.get_disk_usage()
 
+@app.get("/api/backups/status")
+async def get_backup_status(current_user: str = Depends(get_current_active_user)):
+    return backup_manager.get_status()
+
 @app.post("/api/backups")
 async def create_backup(type: str = "world", current_user: str = Depends(get_current_active_user)):
     return await backup_manager.create_backup(type, "world")

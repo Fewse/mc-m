@@ -236,6 +236,19 @@
                                 Backup</button>
                         </div>
                     </div>
+
+                    <!-- Progress Bar (Initially Hidden) -->
+                    <div id="backup-progress-container"
+                        class="hidden bg-gray-800 p-4 rounded border border-gray-700 mb-4">
+                        <div class="flex justify-between text-sm text-gray-400 mb-1">
+                            <span id="backup-status-text">Starting...</span>
+                            <span id="backup-percent">0%</span>
+                        </div>
+                        <div class="w-full bg-gray-700 rounded-full h-2.5">
+                            <div id="backup-bar" class="bg-blue-600 h-2.5 rounded-full" style="width: 0%"></div>
+                        </div>
+                    </div>
+
                     <div class="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
                         <table class="w-full text-left">
                             <thead class="bg-gray-700 text-gray-300">
@@ -519,14 +532,50 @@
 
         async function createBackup(type) {
             if (!confirm(`Create ${type} backup? This might lag the server.`)) return;
-            // Pass type as query param
+
+            // disable buttons
+            document.querySelectorAll('#view-backups button').forEach(b => b.disabled = true);
+
             const res = await api(`/backups?type=${type}`, 'POST');
-            if (res.status === 'success') {
-                alert(res.message);
-                loadBackups();
+            if (res.status === 'started') {
+                // Show progress bar
+                document.getElementById('backup-progress-container').classList.remove('hidden');
+                pollBackupStatus();
             } else {
                 alert(res.message);
+                document.querySelectorAll('#view-backups button').forEach(b => b.disabled = false);
             }
+        }
+
+        async function pollBackupStatus() {
+            const container = document.getElementById('backup-progress-container');
+            const statusText = document.getElementById('backup-status-text');
+            const percentText = document.getElementById('backup-percent');
+            const bar = document.getElementById('backup-bar');
+
+            const interval = setInterval(async () => {
+                const s = await api('/backups/status');
+
+                if (s.state === 'running') {
+                    statusText.innerText = s.message || "Working...";
+                    percentText.innerText = s.progress + '%';
+                    bar.style.width = s.progress + '%';
+                } else {
+                    clearInterval(interval);
+                    // Finished (success or error)
+                    statusText.innerText = s.message;
+                    percentText.innerText = s.state === 'success' ? '100%' : 'Error';
+                    bar.style.width = s.state === 'success' ? '100%' : '0%';
+                    bar.className = s.state === 'success' ? 'bg-green-500 h-2.5 rounded-full' : 'bg-red-500 h-2.5 rounded-full';
+
+                    setTimeout(() => {
+                        container.classList.add('hidden');
+                        bar.className = 'bg-blue-600 h-2.5 rounded-full'; // reset
+                        document.querySelectorAll('#view-backups button').forEach(b => b.disabled = false);
+                        loadBackups();
+                    }, 3000);
+                }
+            }, 1000);
         }
 
         async function deleteBackup(name) {
