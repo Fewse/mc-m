@@ -129,7 +129,6 @@ class ServerManager:
             self.server_start_time = time.time()  # Track start time for uptime
             
             # Debug: Check process immediately after start
-            import time
             time.sleep(0.1)  # Brief pause to let process initialize
             poll_result = self.process.poll()
             app_logger.debug(f"Post-start check: poll()={poll_result}, stdout={self.process.stdout is not None}, stdin={self.process.stdin is not None}")
@@ -392,7 +391,6 @@ class ServerManager:
 # For simple reading of stdout without blocking the async loop, 
 # we can use a Thread to update the queue.
 import threading
-import time
 
 def reader_thread(server_manager):
     app_logger.info("Server output reader thread started")
