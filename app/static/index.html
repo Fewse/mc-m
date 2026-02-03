@@ -6,7 +6,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Minecraft Server Manager</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
         tailwind.config = {
             darkMode: 'class',
@@ -141,15 +140,6 @@
                                 <button type="submit"
                                     class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-r font-bold">Send</button>
                             </form>
-                        </div>
-                    </div>
-                    <!-- Charts -->
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 h-48">
-                        <div class="bg-gray-800 rounded p-4 border border-gray-700 relative">
-                            <canvas id="cpuChart"></canvas>
-                        </div>
-                        <div class="bg-gray-800 rounded p-4 border border-gray-700 relative">
-                            <canvas id="ramChart"></canvas>
                         </div>
                     </div>
                 </div>
@@ -425,95 +415,12 @@
         }
 
         // --- Logic ---
-        // Charts
-        let cpuChart, ramChart;
-
-        function initCharts() {
-            Chart.defaults.color = '#9ca3af';
-            Chart.defaults.borderColor = '#374151';
-
-            cpuChart = new Chart(document.getElementById('cpuChart'), {
-                type: 'line',
-                data: {
-                    labels: [],
-                    datasets: [{
-                        label: 'CPU Usage (%)',
-                        data: [],
-                        borderColor: '#10b981',
-                        backgroundColor: 'rgba(16, 185, 129, 0.1)',
-                        fill: true,
-                        tension: 0.4
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: {
-                        y: { beginAtZero: true, max: 100 },
-                        x: { display: false } // Hide x labels for cleaner look
-                    },
-                    plugins: { legend: { display: false }, title: { display: true, text: 'CPU Usage' } }
-                }
-            });
-
-            ramChart = new Chart(document.getElementById('ramChart'), {
-                type: 'line',
-                data: {
-                    labels: [],
-                    datasets: [{
-                        label: 'RAM Usage (MB)',
-                        data: [],
-                        borderColor: '#3b82f6',
-                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                        fill: true,
-                        tension: 0.4
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: {
-                        y: { beginAtZero: true },
-                        x: { display: false }
-                    },
-                    plugins: { legend: { display: false }, title: { display: true, text: 'RAM Usage' } }
-                }
-            });
-        }
-
-        function updateCharts(cpu, ram) {
-            const now = new Date().toLocaleTimeString();
-
-            // CPU
-            cpuChart.data.labels.push(now);
-            cpuChart.data.datasets[0].data.push(cpu);
-            if (cpuChart.data.labels.length > 20) {
-                cpuChart.data.labels.shift();
-                cpuChart.data.datasets[0].data.shift();
-            }
-            cpuChart.update();
-
-            // RAM
-            // Parse "123.4 MB" -> 123.4
-            const ramVal = parseFloat(ram);
-            ramChart.data.labels.push(now);
-            ramChart.data.datasets[0].data.push(ramVal);
-            if (ramChart.data.labels.length > 20) {
-                ramChart.data.labels.shift();
-                ramChart.data.datasets[0].data.shift();
-            }
-            ramChart.update();
-        }
-
         function startStatsLoop() {
-            initCharts();
             setInterval(async () => {
                 try {
                     const stats = await api('/stats');
                     document.getElementById('cpu-stat').innerText = stats.cpu + '%';
                     document.getElementById('ram-stat').innerText = stats.ram;
-
-                    updateCharts(stats.cpu, stats.ram);
 
                     const badge = document.getElementById('server-status');
                     if (stats.status === 'online') {
