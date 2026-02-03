@@ -60,21 +60,36 @@
     <!-- App Content -->
     <div id="app-content" class="hidden flex-1 flex flex-col">
         <!-- Header -->
-        <header class="bg-gray-800 shadow-md p-4 flex justify-between items-center border-b border-gray-700">
-            <h1 class="text-xl font-bold text-green-500">MC Manager</h1>
+        <header
+            class="bg-gray-800 shadow-md p-4 flex justify-between items-center border-b border-gray-700 z-10 shrink-0">
+            <div class="flex items-center">
+                <button onclick="toggleSidebar()"
+                    class="md:hidden mr-3 text-gray-300 hover:text-white focus:outline-none">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M4 6h16M4 12h16M4 18h16"></path>
+                    </svg>
+                </button>
+                <h1 class="text-xl font-bold text-green-500">MC Manager</h1>
+            </div>
             <div class="flex items-center space-x-4">
                 <span id="server-status"
                     class="px-3 py-1 rounded-full text-xs font-bold bg-gray-600 text-gray-300">OFFLINE</span>
-                <span class="text-gray-400 text-sm">CPU: <span id="cpu-stat">0%</span></span>
-                <span class="text-gray-400 text-sm">RAM: <span id="ram-stat">0 MB</span></span>
+                <span class="text-gray-400 text-sm hidden sm:inline">CPU: <span id="cpu-stat">0%</span></span>
+                <span class="text-gray-400 text-sm hidden sm:inline">RAM: <span id="ram-stat">0 MB</span></span>
                 <button onclick="logout()" class="text-sm text-red-400 hover:text-red-300">Logout</button>
             </div>
         </header>
 
         <!-- Main Body -->
-        <div class="flex-1 flex overflow-hidden">
+        <div class="flex-1 flex overflow-hidden relative">
+            <!-- Mobile Overlay -->
+            <div id="sidebar-overlay" onclick="toggleSidebar()"
+                class="fixed inset-0 bg-black bg-opacity-50 z-20 hidden md:hidden"></div>
+
             <!-- Sidebar -->
-            <nav class="w-64 bg-gray-800 border-r border-gray-700 flex flex-col p-4 space-y-2">
+            <nav id="sidebar"
+                class="absolute inset-y-0 left-0 transform -translate-x-full md:relative md:translate-x-0 transition duration-200 ease-in-out z-30 w-64 bg-gray-800 border-r border-gray-700 flex flex-col p-4 space-y-2 h-full">
                 <button onclick="showUnimplemented('dashboard')"
                     class="bg-gray-700 hover:bg-gray-600 text-left px-4 py-2 rounded text-white active-nav"
                     data-tab="dashboard">Dashboard & Console</button>
@@ -84,6 +99,12 @@
                 <button onclick="showUnimplemented('files')"
                     class="hover:bg-gray-700 text-left px-4 py-2 rounded text-gray-300" data-tab="files">File
                     Editor</button>
+                <button onclick="showUnimplemented('backups')"
+                    class="hover:bg-gray-700 text-left px-4 py-2 rounded text-gray-300"
+                    data-tab="backups">Backups</button>
+                <button onclick="showUnimplemented('logs')"
+                    class="hover:bg-gray-700 text-left px-4 py-2 rounded text-gray-300" data-tab="logs">Log
+                    History</button>
             </nav>
 
             <!-- Content Area -->
@@ -275,6 +296,21 @@
             location.reload();
         }
 
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('sidebar-overlay');
+
+            if (sidebar.classList.contains('-translate-x-full')) {
+                // Open
+                sidebar.classList.remove('-translate-x-full');
+                overlay.classList.remove('hidden');
+            } else {
+                // Close
+                sidebar.classList.add('-translate-x-full');
+                overlay.classList.add('hidden');
+            }
+        }
+
         function showApp() {
             document.getElementById('login-modal').classList.add('hidden');
             document.getElementById('app-content').classList.remove('hidden');
@@ -304,6 +340,11 @@
                     b.classList.add('text-gray-300');
                 }
             });
+
+            // Close sidebar on mobile
+            if (window.innerWidth < 768) {
+                toggleSidebar();
+            }
 
             if (tab === 'files') loadFile();
             if (tab === 'backups') loadBackups();
